@@ -2,5 +2,7 @@ EnumWindows
 GetWindowThreadProcessId
 IsWindowVisible
 GetWindowRect
+GetClientRect
+SetParent
 SetWindowPos
 IsWindow

@@ -9,6 +9,12 @@ public static class TerminalOverlayInterop {
     public const int OverlayWidth = 200;
     public const int OverlayHeight = 200;
 
+    const uint WsChild = 0x4000_0000;
+    const uint WsPopup = 0x8000_0000;
+
+    /// <summary>Child sibling Z-order: insert-after = HWND_TOP (0).</summary>
+    static readonly HWND HwndTop = new((nint)0);
+
     static nint _bestHwnd;
     static int _bestArea;
 
@@ -59,24 +65,73 @@ public static class TerminalOverlayInterop {
     }
 
     /// <summary>
-    /// Places <paramref name="overlayHwnd"/> at the bottom-left inside the terminal window's screen rectangle (200×200 px).
+    /// Saves native style, applies WS_CHILD, calls SetParent, and lays out at the host client-area bottom-left (200×200).
     /// </summary>
-    public static bool TryPlaceOverlayBottomLeft(nint terminalHwnd, nint overlayHwnd) {
+    public static bool TryBeginEmbedInTerminalClient(nint terminalHwnd, nint overlayHwnd, out nint capturedStyle) {
+        capturedStyle = 0;
         var term = new HWND(terminalHwnd);
         var overlay = new HWND(overlayHwnd);
         if (!PInvoke.IsWindow(term) || !PInvoke.IsWindow(overlay))
             return false;
 
-        if (!PInvoke.GetWindowRect(term, out var rect))
+        capturedStyle = NativeWindowLong.GetWindowLongPtr(overlayHwnd, NativeWindowLong.GwlStyle);
+
+        var wsPopup = unchecked((nint)(long)(ulong)WsPopup);
+        var style = unchecked((capturedStyle | (nint)(ulong)WsChild) & ~wsPopup);
+        _ = NativeWindowLong.SetWindowLongPtr(overlayHwnd, NativeWindowLong.GwlStyle, style);
+
+        _ = PInvoke.SetParent(overlay, term);
+
+        return TryLayoutEmbeddedInTerminalClient(terminalHwnd, overlayHwnd);
+    }
+
+    /// <summary>Moves an already child overlay to another terminal top-level window.</summary>
+    public static bool TrySwitchEmbedParent(nint overlayHwnd, nint newTerminalHwnd) {
+        var overlay = new HWND(overlayHwnd);
+        var term = new HWND(newTerminalHwnd);
+        if (!PInvoke.IsWindow(overlay) || !PInvoke.IsWindow(term))
             return false;
 
-        var x = rect.left;
-        var y = rect.bottom - OverlayHeight;
+        _ = PInvoke.SetParent(overlay, term);
+
+        return TryLayoutEmbeddedInTerminalClient(newTerminalHwnd, overlayHwnd);
+    }
+
+    /// <summary>
+    /// Positions the overlay at bottom-left inside the terminal's client area (coordinates relative to host).
+    /// </summary>
+    public static bool TryLayoutEmbeddedInTerminalClient(nint terminalHwnd, nint overlayHwnd) {
+        var term = new HWND(terminalHwnd);
+        var overlay = new HWND(overlayHwnd);
+        if (!PInvoke.IsWindow(term) || !PInvoke.IsWindow(overlay))
+            return false;
+
+        if (!PInvoke.GetClientRect(term, out var rc))
+            return false;
+
+        var clientH = rc.bottom - rc.top;
+        var y = clientH - OverlayHeight;
 
         var flags = SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE
                     | SET_WINDOW_POS_FLAGS.SWP_SHOWWINDOW;
 
-        _ = PInvoke.SetWindowPos(overlay, term, x, y, OverlayWidth, OverlayHeight, flags);
+        _ = PInvoke.SetWindowPos(overlay, HwndTop, 0, y, OverlayWidth, OverlayHeight, flags);
         return true;
+    }
+
+    /// <summary>
+    /// Detaches from the host and restores the style captured in <see cref="TryBeginEmbedInTerminalClient"/>.
+    /// </summary>
+    public static void EndEmbedOverlay(nint overlayHwnd, nint capturedStyle) {
+        if (overlayHwnd == 0)
+            return;
+
+        var overlay = new HWND(overlayHwnd);
+        if (!PInvoke.IsWindow(overlay))
+            return;
+
+        _ = PInvoke.SetParent(overlay, HWND.Null);
+
+        _ = NativeWindowLong.SetWindowLongPtr(overlayHwnd, NativeWindowLong.GwlStyle, capturedStyle);
     }
 }
