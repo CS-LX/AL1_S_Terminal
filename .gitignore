@@ -1,0 +1,45 @@
+## Build
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+[Dd]ist/
+
+## Visual Studio / MSBuild
+.vs/
+*.user
+*.userosscache
+*.rsuser
+*.suo
+*.sln.docstates
+
+## JetBrains Rider / ReSharper
+.idea/
+*.sln.DotSettings.user
+*.DotSettings.user
+*.csproj.DotSettings.user
+riderModule.iml
+_ReSharper.Caches/
+
+## NuGet
+[Pp]ackages/
+*.nupkg
+*.snupkg
+
+## OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## Coverage / tooling
+*.coverage
+*.dotCover
