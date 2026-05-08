@@ -1,1 +1,6 @@
-GetCursorPos
+EnumWindows
+GetWindowThreadProcessId
+IsWindowVisible
+GetWindowRect
+SetWindowPos
+IsWindow

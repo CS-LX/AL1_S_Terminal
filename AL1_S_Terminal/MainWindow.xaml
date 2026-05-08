@@ -3,12 +3,20 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:AL1_S_Terminal"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid Margin="12">
-        <TextBlock x:Name="CursorPositionText"
-                   FontSize="18"
-                   VerticalAlignment="Top" />
-    </Grid>
+        Title="AL1_S_Terminal"
+        Width="200"
+        Height="200"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Visibility="Hidden"
+        WindowStartupLocation="Manual">
+    <Window.Background>
+        <ImageBrush ImageSource="pack://application:,,,/Assets/window_bg.png"
+                    Stretch="UniformToFill"
+                    AlignmentX="Left"
+                    AlignmentY="Bottom" />
+    </Window.Background>
+    <Grid />
 </Window>
