@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -7,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using MediaBrush = System.Windows.Media.Brush;
 using AL1_S_Terminal.OverlayAnimations.Config;
 
 namespace AL1_S_Terminal.OverlayAnimations.Editor;
@@ -16,6 +18,7 @@ public partial class OverlayAnimationEditorWindow : Window {
 
     readonly EditorPreviewController _preview;
     readonly DispatcherTimer _debounce;
+    readonly ObservableCollection<EditorAssetItem> _assetItems = new();
     EditorDocument _document = EditorDocument.CreateMinimalForPreview();
     string? _workspaceRoot;
     string? _preferredPreviewState;
@@ -24,6 +27,7 @@ public partial class OverlayAnimationEditorWindow : Window {
 
     public OverlayAnimationEditorWindow() {
         InitializeComponent();
+        AssetsListBox.ItemsSource = _assetItems;
         _preview = new EditorPreviewController(PreviewHost);
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         _debounce.Tick += (_, _) => {
@@ -51,6 +55,7 @@ public partial class OverlayAnimationEditorWindow : Window {
                 _document = EditorDocument.CreateMinimalForPreview();
                 RebuildTree();
                 SyncDocumentFieldsToUi();
+                RefreshAssetsPanel();
                 Dispatcher.BeginInvoke(SelectFirstLayer, DispatcherPriority.Loaded);
                 RefreshPreview();
             }
@@ -111,6 +116,164 @@ public partial class OverlayAnimationEditorWindow : Window {
 
     void RestartButton_Click(object sender, RoutedEventArgs e) => _preview.Restart();
 
+    void RefreshAssetsPanel() {
+        _assetItems.Clear();
+        if (_workspaceRoot is null) {
+            UpdateAssetsChrome();
+            return;
+        }
+
+        foreach (var kv in _document.Images.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)) {
+            var rel = kv.Value.Replace('\\', '/');
+            var full = Path.GetFullPath(Path.Combine(_workspaceRoot, rel.Replace('/', Path.DirectorySeparatorChar)));
+            _assetItems.Add(new EditorAssetItem(kv.Key, rel, full));
+        }
+
+        UpdateAssetsChrome();
+    }
+
+    void UpdateAssetsChrome() {
+        var hasWs = _workspaceRoot is not null;
+        AssetsImportImageButton.IsEnabled = hasWs;
+        var hasSelection = hasWs && AssetsListBox.SelectedItem is EditorAssetItem;
+        AssetsApplyToLayerButton.IsEnabled = hasSelection && _selectedLayer is not null;
+        AssetsDeleteResourceButton.IsEnabled = hasSelection;
+        AssetsHintText.Text = hasWs
+            ? "双击资源可将该图块键应用到左侧树中选中的图层；或选中图层与资源后点「应用到当前图层」。「删除资源」会移除登记项与磁盘文件（有图层引用时不可删）。"
+            : "打开或新建 .alice 包后，可在此将图片复制到工作区 assets/ 并登记到 key.json。";
+    }
+
+    void AssetsImportImageButton_Click(object sender, RoutedEventArgs e) {
+        if (_workspaceRoot is null) {
+            System.Windows.MessageBox.Show(this, "请先打开或新建动画包。", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dlg = new Microsoft.Win32.OpenFileDialog {
+            Filter = "图片 (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp)|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp|所有文件 (*.*)|*.*",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)
+        };
+        if (dlg.ShowDialog(this) != true)
+            return;
+
+        try {
+            var assetsDir = Path.Combine(_workspaceRoot, OverlayAlicePackage.AssetsFolderName);
+            Directory.CreateDirectory(assetsDir);
+            var src = dlg.FileName;
+            var uniqueName = EditorAssetItem.UniqueFileNameInDirectory(assetsDir, Path.GetFileName(src));
+            var destPath = Path.Combine(assetsDir, uniqueName);
+            File.Copy(src, destPath, overwrite: false);
+
+            var stem = EditorAssetItem.SanitizeKeyStem(Path.GetFileNameWithoutExtension(uniqueName));
+            var key = EditorAssetItem.UniqueImageKey(_document.Images, stem);
+            var rel = $"{OverlayAlicePackage.AssetsFolderName}/{uniqueName}".Replace('\\', '/');
+            _document.Images[key] = rel;
+
+            RefreshAssetsPanel();
+            var added = _assetItems.FirstOrDefault(a => string.Equals(a.Key, key, StringComparison.Ordinal));
+            if (added is not null)
+                AssetsListBox.SelectedItem = added;
+
+            SchedulePreviewRefresh();
+        }
+        catch (Exception ex) {
+            System.Windows.MessageBox.Show(this, $"导入图片失败：{ex.Message}", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    void AssetsApplyToLayerButton_Click(object sender, RoutedEventArgs e) {
+        if (!TryApplySelectedAssetToSelectedLayer())
+            System.Windows.MessageBox.Show(this, "请在左侧树选中一个图层，并在下方 Assets 中选择一个资源。", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    void AssetsDeleteResourceButton_Click(object sender, RoutedEventArgs e) {
+        if (_workspaceRoot is null || AssetsListBox.SelectedItem is not EditorAssetItem asset) {
+            System.Windows.MessageBox.Show(this, "请在 Assets 列表中选择要删除的资源。", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var refs = CollectLayerReferencesToImageKey(asset.Key);
+        if (refs.Count > 0) {
+            var sample = string.Join("\n", refs.Take(12));
+            if (refs.Count > 12)
+                sample += $"\n…共 {refs.Count} 处引用";
+            System.Windows.MessageBox.Show(this,
+                $"以下图层仍在使用该图块键，请先修改图层后再删除：\n{sample}",
+                "动画编辑器",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        if (System.Windows.MessageBox.Show(this,
+                $"删除资源「{asset.Key}」？\n将从 key.json 移除映射，并删除文件：\n{asset.RelativePath}",
+                "动画编辑器",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        try {
+            _preview.ReleaseWorkspaceFileLocks();
+            _document.Images.Remove(asset.Key);
+            if (File.Exists(asset.FullPath) && IsFileUnderWorkspace(asset.FullPath, _workspaceRoot))
+                File.Delete(asset.FullPath);
+
+            RefreshAssetsPanel();
+            RebuildTree();
+            SchedulePreviewRefresh();
+        }
+        catch (Exception ex) {
+            System.Windows.MessageBox.Show(this, $"删除资源失败：{ex.Message}", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    List<string> CollectLayerReferencesToImageKey(string imageKey) {
+        var list = new List<string>();
+        foreach (var clip in _document.Clips) {
+            foreach (var layer in clip.Layers) {
+                if (string.Equals(layer.ImageKey, imageKey, StringComparison.Ordinal))
+                    list.Add($"{clip.Name} / {layer.LayerKey}");
+            }
+        }
+
+        return list;
+    }
+
+    static bool IsFileUnderWorkspace(string filePath, string workspaceRoot) {
+        var ws = Path.GetFullPath(workspaceRoot);
+        var fp = Path.GetFullPath(filePath);
+        return fp.StartsWith(ws + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(fp, ws, StringComparison.OrdinalIgnoreCase);
+    }
+
+    void AssetsListBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        UpdateAssetsChrome();
+
+    void AssetsListBox_OnMouseDoubleClick(object sender, MouseButtonEventArgs e) {
+        if (FindAncestorListBoxItem(e.OriginalSource as DependencyObject) is null)
+            return;
+        TryApplySelectedAssetToSelectedLayer();
+    }
+
+    bool TryApplySelectedAssetToSelectedLayer() {
+        if (AssetsListBox.SelectedItem is not EditorAssetItem asset || _selectedLayer is null)
+            return false;
+        _selectedLayer.ImageKey = asset.Key;
+        RebuildTree();
+        UpdateAssetsChrome();
+        SchedulePreviewRefresh();
+        return true;
+    }
+
+    static ListBoxItem? FindAncestorListBoxItem(DependencyObject? src) {
+        while (src is not null) {
+            if (src is ListBoxItem li)
+                return li;
+            src = VisualTreeHelper.GetParent(src);
+        }
+        return null;
+    }
+
     void OverlaySizeBox_TextChanged(object sender, TextChangedEventArgs e) {
         if (_suppressFieldEvents)
             return;
@@ -138,6 +301,13 @@ public partial class OverlayAnimationEditorWindow : Window {
             return;
 
         var menu = new System.Windows.Controls.ContextMenu();
+        if (FindResource("Editor.PanelBrush") is MediaBrush menuBg)
+            menu.Background = menuBg;
+        if (FindResource("Editor.FgBrush") is MediaBrush menuFg)
+            menu.Foreground = menuFg;
+        if (FindResource("Editor.BorderBrush") is MediaBrush menuBd)
+            menu.BorderBrush = menuBd;
+        menu.BorderThickness = new Thickness(1);
 
         if (tvi.Header as string == "States") {
             menu.Items.Add(MenuItemOf("添加状态", (_, _) => AddState()));
@@ -169,14 +339,16 @@ public partial class OverlayAnimationEditorWindow : Window {
         }
     }
 
-    static System.Windows.Controls.MenuItem MenuItemOf(string header, RoutedEventHandler onClick) {
+    System.Windows.Controls.MenuItem MenuItemOf(string header, RoutedEventHandler onClick) {
         var mi = new System.Windows.Controls.MenuItem { Header = header };
+        if (FindResource("Editor.FgBrush") is MediaBrush fg)
+            mi.Foreground = fg;
         mi.Click += onClick;
         return mi;
     }
 
     void AddState() {
-        if (!TryPrompt(this, "新状态名称", "State", out var name))
+        if (!TryPrompt("新状态名称", "State", out var name))
             return;
         name = name.Trim();
         if (string.IsNullOrEmpty(name)) {
@@ -198,7 +370,7 @@ public partial class OverlayAnimationEditorWindow : Window {
 
     void BindStateToClip(StateEditNode st) {
         var names = string.Join(", ", _document.Clips.Select(c => c.Name));
-        if (!TryPrompt(this, $"片段名称（可用：{names}）", st.ClipName, out var clipName))
+        if (!TryPrompt($"片段名称（可用：{names}）", st.ClipName, out var clipName))
             return;
         clipName = clipName.Trim();
         if (string.IsNullOrEmpty(clipName))
@@ -220,7 +392,7 @@ public partial class OverlayAnimationEditorWindow : Window {
     }
 
     void RenameState(StateEditNode st) {
-        if (!TryPrompt(this, "重命名状态", st.Name, out var name))
+        if (!TryPrompt("重命名状态", st.Name, out var name))
             return;
         name = name.Trim();
         if (string.IsNullOrEmpty(name) || string.Equals(name, st.Name, StringComparison.Ordinal))
@@ -257,7 +429,7 @@ public partial class OverlayAnimationEditorWindow : Window {
     }
 
     void AddClip() {
-        if (!TryPrompt(this, "新片段名称", "clip", out var name))
+        if (!TryPrompt("新片段名称", "clip", out var name))
             return;
         name = name.Trim();
         if (string.IsNullOrEmpty(name)) {
@@ -284,7 +456,7 @@ public partial class OverlayAnimationEditorWindow : Window {
     }
 
     void EditClipDuration(ClipEditNode clip) {
-        if (!TryPrompt(this, "片段时长 (毫秒)", clip.DurationMs.ToString(), out var txt))
+        if (!TryPrompt("片段时长 (毫秒)", clip.DurationMs.ToString(), out var txt))
             return;
         if (!int.TryParse(txt.Trim(), out var ms) || ms < 1) {
             System.Windows.MessageBox.Show(this, "请输入正整数毫秒。", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -297,7 +469,7 @@ public partial class OverlayAnimationEditorWindow : Window {
     }
 
     void RenameClip(ClipEditNode clip) {
-        if (!TryPrompt(this, "重命名片段", clip.Name, out var name))
+        if (!TryPrompt("重命名片段", clip.Name, out var name))
             return;
         name = name.Trim();
         if (string.IsNullOrEmpty(name) || string.Equals(name, clip.Name, StringComparison.Ordinal))
@@ -353,7 +525,7 @@ public partial class OverlayAnimationEditorWindow : Window {
     }
 
     void RenameLayer(LayerEditNode layer) {
-        if (!TryPrompt(this, "重命名图层键", layer.LayerKey, out var key))
+        if (!TryPrompt("重命名图层键", layer.LayerKey, out var key))
             return;
         key = key.Trim();
         if (string.IsNullOrEmpty(key) || string.Equals(key, layer.LayerKey, StringComparison.Ordinal))
@@ -373,7 +545,7 @@ public partial class OverlayAnimationEditorWindow : Window {
 
     void ChangeLayerImageKey(LayerEditNode layer) {
         var keys = string.Join(", ", _document.Images.Keys);
-        if (!TryPrompt(this, $"图块键（可用：{keys}）", layer.ImageKey, out var ik))
+        if (!TryPrompt($"图块键（可用：{keys}）", layer.ImageKey, out var ik))
             return;
         ik = ik.Trim();
         if (string.IsNullOrEmpty(ik))
@@ -406,6 +578,7 @@ public partial class OverlayAnimationEditorWindow : Window {
             _selectedLayer = layer;
             layer.Frames.CollectionChanged += OnFramesCollectionChanged;
             KeyframesGrid.ItemsSource = layer.Frames;
+            UpdateAssetsChrome();
             SchedulePreviewRefresh();
             return;
         }
@@ -415,6 +588,7 @@ public partial class OverlayAnimationEditorWindow : Window {
             KeyframesGrid.ItemsSource = null;
             _selectedLayer = null;
             _preferredPreviewState = state.Name;
+            UpdateAssetsChrome();
             SchedulePreviewRefresh();
             return;
         }
@@ -425,6 +599,7 @@ public partial class OverlayAnimationEditorWindow : Window {
             _selectedLayer = null;
             _preferredPreviewState = _document.States.FirstOrDefault(s => string.Equals(s.ClipName, clip.Name, StringComparison.Ordinal))?.Name
                 ?? _document.DefaultState;
+            UpdateAssetsChrome();
             SchedulePreviewRefresh();
             return;
         }
@@ -432,6 +607,7 @@ public partial class OverlayAnimationEditorWindow : Window {
         UnsubscribeFrames();
         KeyframesGrid.ItemsSource = null;
         _selectedLayer = null;
+        UpdateAssetsChrome();
     }
 
     void KeyframesGrid_OnCellEditEnding(object? sender, DataGridCellEditEndingEventArgs e) =>
@@ -485,6 +661,7 @@ public partial class OverlayAnimationEditorWindow : Window {
             _preferredPreviewState = cfg.DefaultState;
             RebuildTree();
             SyncDocumentFieldsToUi();
+            RefreshAssetsPanel();
             Dispatcher.BeginInvoke(SelectFirstLayer, DispatcherPriority.Loaded);
             RefreshPreview();
         }
@@ -512,6 +689,7 @@ public partial class OverlayAnimationEditorWindow : Window {
         OverlayAlicePackage.WriteKeyToDirectory(root, _document.ToConfig());
         RebuildTree();
         SyncDocumentFieldsToUi();
+        RefreshAssetsPanel();
         Dispatcher.BeginInvoke(SelectFirstLayer, DispatcherPriority.Loaded);
         RefreshPreview();
     }
@@ -565,6 +743,8 @@ public partial class OverlayAnimationEditorWindow : Window {
         _preview.ReleaseWorkspaceFileLocks();
         OverlayAlicePackage.TryDeleteDirectory(_workspaceRoot);
         _workspaceRoot = null;
+        _assetItems.Clear();
+        UpdateAssetsChrome();
     }
 
     void SyncDocumentFieldsToUi() {
@@ -639,17 +819,23 @@ public partial class OverlayAnimationEditorWindow : Window {
         return null;
     }
 
-    static bool TryPrompt(Window owner, string title, string initial, out string result) {
+    bool TryPrompt(string title, string initial, out string result) {
         var captured = initial;
         var dlg = new Window {
             Title = title,
-            Owner = owner,
+            Owner = this,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             ResizeMode = ResizeMode.NoResize,
             SizeToContent = SizeToContent.WidthAndHeight,
             ShowInTaskbar = false
         };
+        if (FindResource("Editor.PanelBrush") is MediaBrush dlgBg)
+            dlg.Background = dlgBg;
+        if (FindResource("Editor.FgBrush") is MediaBrush dlgFg)
+            dlg.Foreground = dlgFg;
         var tb = new System.Windows.Controls.TextBox { Text = captured, MinWidth = 280, Margin = new Thickness(12, 12, 12, 0) };
+        if (FindResource("EditorTextBox") is Style tbStyle)
+            tb.Style = tbStyle;
         var row = new StackPanel {
             Orientation = System.Windows.Controls.Orientation.Horizontal,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
@@ -657,6 +843,10 @@ public partial class OverlayAnimationEditorWindow : Window {
         };
         var ok = new System.Windows.Controls.Button { Content = "确定", Width = 72, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
         var cancel = new System.Windows.Controls.Button { Content = "取消", Width = 72, IsCancel = true };
+        if (FindResource("EditorToolBarButton") is Style btnStyle) {
+            ok.Style = btnStyle;
+            cancel.Style = btnStyle;
+        }
         ok.Click += (_, _) => {
             captured = tb.Text;
             dlg.DialogResult = true;
