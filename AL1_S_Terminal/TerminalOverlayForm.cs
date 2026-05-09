@@ -1,6 +1,8 @@
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using AL1_S_Terminal.OverlayAnimations.Config;
+using AL1_S_Terminal.OverlayAnimations.Runtime;
 using AL1_S_Terminal.Win32;
 
 namespace AL1_S_Terminal;
@@ -10,6 +12,11 @@ namespace AL1_S_Terminal;
 /// </summary>
 sealed class TerminalOverlayForm : Form {
     const int WsExNoactivate = unchecked((int)0x0800_0000);
+
+    private readonly OverlayAnimationHost _host;
+
+    /// <summary>Overlay animation controller; call <see cref="IOverlayAnimator.SetState"/> to switch states.</summary>
+    public IOverlayAnimator Animator => _host;
 
     public TerminalOverlayForm() {
         TopLevel = true;
@@ -36,6 +43,17 @@ sealed class TerminalOverlayForm : Form {
 
         BackgroundImageLayout = ImageLayout.Stretch;
         DoubleBuffered = true;
+
+        var baseDir = AppContext.BaseDirectory;
+        var cfgPath = Path.Combine(baseDir, "Assets", "overlay_animations", "default.json");
+        var cfg = OverlayAnimationConfigLoader.LoadFromFile(cfgPath);
+        _host = OverlayAnimationHost.CreateAndAttach(this, cfg, baseDir);
+    }
+
+    protected override void Dispose(bool disposing) {
+        if (disposing)
+            _host.Dispose();
+        base.Dispose(disposing);
     }
 
     protected override CreateParams CreateParams {
