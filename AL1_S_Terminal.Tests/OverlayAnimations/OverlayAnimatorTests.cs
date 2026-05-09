@@ -304,6 +304,56 @@ public sealed class OverlayAnimatorTests
 
 public sealed class OverlayImageAtlasTests
 {
+	[Theory]
+	[InlineData(@"C:\x.png")]
+	[InlineData(@"..\x.png")]
+	public void AtlasRejectsAbsoluteOrTraversalPaths(string badRelativePath)
+	{
+		var baseDir = Path.Combine(Path.GetTempPath(), "atlas_path_test_" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(baseDir);
+
+		var loadCount = 0;
+		var images = new Dictionary<string, string> { ["k"] = badRelativePath };
+		using var atlas = new OverlayImageAtlas(images, baseDir, _ =>
+		{
+			loadCount++;
+			return new Bitmap(1, 1);
+		});
+
+		Assert.Throws<InvalidOperationException>(() => atlas.TryGet("k", out _));
+		Assert.Equal(0, loadCount);
+	}
+
+	[Fact]
+	public void AtlasDoesNotCacheOnLoaderException()
+	{
+		var images = new Dictionary<string, string> { ["k"] = "a.png" };
+		var loadCount = 0;
+		using var atlas = new OverlayImageAtlas(images, @"C:\base", _ =>
+		{
+			loadCount++;
+			if (loadCount == 1)
+				throw new IOException("simulated load failure");
+			return new Bitmap(1, 1);
+		});
+
+		Assert.Throws<IOException>(() => atlas.TryGet("k", out _));
+		Assert.True(atlas.TryGet("k", out var img));
+		Assert.NotNull(img);
+		Assert.Equal(2, loadCount);
+	}
+
+	[Fact]
+	public void TryGetAfterDisposeThrows()
+	{
+		var images = new Dictionary<string, string> { ["k"] = "f.png" };
+		var atlas = new OverlayImageAtlas(images, @"C:\base", _ => new Bitmap(1, 1));
+		atlas.TryGet("k", out _);
+		atlas.Dispose();
+
+		Assert.Throws<ObjectDisposedException>(() => atlas.TryGet("k", out _));
+	}
+
 	[Fact]
 	public void AtlasCachesImagesByKey()
 	{
