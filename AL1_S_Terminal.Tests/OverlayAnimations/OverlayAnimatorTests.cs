@@ -259,11 +259,12 @@ public sealed class OverlayAnimatorTests
 	}
 
 	[Fact]
-	public void LoadBundledDefaultJson_FromTestOutput_HasExpectedStructure()
+	public void LoadBundledDefaultAlice_FromTestOutput_HasExpectedStructure()
 	{
-		var path = Path.Combine(AppContext.BaseDirectory, "Assets", "overlay_animations", "default.json");
-		Assert.True(File.Exists(path), $"Expected default overlay config at: {path}");
-		var cfg = OverlayAnimationConfigLoader.LoadFromFile(path);
+		var path = Path.Combine(AppContext.BaseDirectory, "Assets", "overlay_animations", "Default.alice");
+		Assert.True(File.Exists(path), $"Expected default overlay package at: {path}");
+		using var session = OverlayAlicePackage.LoadExtracted(path);
+		var cfg = session.Config;
 		Assert.Equal("Idle", cfg.DefaultState);
 		foreach (var key in new[] { "spark", "ring", "logo" })
 			Assert.True(cfg.Images.ContainsKey(key), $"Missing image key: {key}");

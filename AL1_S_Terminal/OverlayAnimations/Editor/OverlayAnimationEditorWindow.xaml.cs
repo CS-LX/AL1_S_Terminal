@@ -1,4 +1,6 @@
 using System.Collections.Specialized;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -8,9 +10,12 @@ using AL1_S_Terminal.OverlayAnimations.Config;
 namespace AL1_S_Terminal.OverlayAnimations.Editor;
 
 public partial class OverlayAnimationEditorWindow : Window {
+    const string AliceFilter = "Alice 动画包 (*.alice)|*.alice|All files (*.*)|*.*";
+
     readonly EditorPreviewController _preview;
     readonly DispatcherTimer _debounce;
     EditorDocument _document = EditorDocument.CreateMinimalForPreview();
+    string? _workspaceRoot;
     string? _preferredPreviewState;
     LayerEditNode? _selectedLayer;
 
@@ -26,22 +31,25 @@ public partial class OverlayAnimationEditorWindow : Window {
     }
 
     void Window_Loaded(object sender, RoutedEventArgs e) {
-        var path = Path.Combine(AppContext.BaseDirectory, "Assets", "overlay_animations", "default.json");
+        var defaultAlice = Path.Combine(AppContext.BaseDirectory, "Assets", "overlay_animations", "Default.alice");
         try {
-            if (File.Exists(path))
-                LoadFromPath(path, showErrors: false);
-            else {
+            if (File.Exists(defaultAlice))
+                LoadAlicePackage(defaultAlice);
+            else
+                CreateNewWorkspaceInternal();
+        }
+        catch (Exception ex) {
+            System.Windows.MessageBox.Show(this, $"加载默认包失败：{ex.Message}", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Warning);
+            try {
+                CreateNewWorkspaceInternal();
+            }
+            catch (Exception ex2) {
+                System.Windows.MessageBox.Show(this, $"新建工作区失败：{ex2.Message}", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Error);
                 _document = EditorDocument.CreateMinimalForPreview();
                 RebuildTree();
                 Dispatcher.BeginInvoke(SelectFirstLayer, DispatcherPriority.Loaded);
                 RefreshPreview();
             }
-        }
-        catch (Exception ex) {
-            System.Windows.MessageBox.Show(this, $"加载默认配置失败：{ex.Message}", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Warning);
-            RebuildTree();
-            Dispatcher.BeginInvoke(SelectFirstLayer, DispatcherPriority.Loaded);
-            RefreshPreview();
         }
     }
 
@@ -49,35 +57,49 @@ public partial class OverlayAnimationEditorWindow : Window {
         UnsubscribeFrames();
         _debounce.Stop();
         _preview.Dispose();
+        TearDownWorkspace();
         base.OnClosed(e);
     }
 
-    void OpenButton_Click(object sender, RoutedEventArgs e) {
+    void NewButton_Click(object sender, RoutedEventArgs e) {
+        try {
+            CreateNewWorkspaceInternal();
+        }
+        catch (Exception ex) {
+            System.Windows.MessageBox.Show(this, $"新建失败：{ex.Message}", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    void ImportButton_Click(object sender, RoutedEventArgs e) {
         var dlg = new Microsoft.Win32.OpenFileDialog {
-            Filter = "JSON (*.json)|*.json|All files (*.*)|*.*",
+            Filter = AliceFilter,
             InitialDirectory = GetAnimationsInitialDirectory()
         };
         if (dlg.ShowDialog(this) != true)
             return;
-        LoadFromPath(dlg.FileName, showErrors: true);
+        try {
+            LoadAlicePackage(dlg.FileName);
+        }
+        catch (Exception ex) {
+            System.Windows.MessageBox.Show(this, $"导入失败：{ex.Message}", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
-    void SaveButton_Click(object sender, RoutedEventArgs e) {
+    void ExportButton_Click(object sender, RoutedEventArgs e) {
         if (string.IsNullOrWhiteSpace(_document.FilePath)) {
-            SaveAsInternal();
+            ExportAsInternal();
             return;
         }
 
         try {
-            var cfg = _document.ToConfig();
-            OverlayAnimationConfigLoader.SaveToFile(_document.FilePath, cfg);
+            SaveAliceToPath(_document.FilePath);
         }
         catch (Exception ex) {
-            System.Windows.MessageBox.Show(this, $"保存失败：{ex.Message}", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Error);
+            System.Windows.MessageBox.Show(this, $"导出失败：{ex.Message}", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
-    void SaveAsButton_Click(object sender, RoutedEventArgs e) => SaveAsInternal();
+    void ExportAsButton_Click(object sender, RoutedEventArgs e) => ExportAsInternal();
 
     void PlayButton_Click(object sender, RoutedEventArgs e) => _preview.Play();
 
@@ -136,53 +158,105 @@ public partial class OverlayAnimationEditorWindow : Window {
             var play = _preferredPreviewState;
             if (string.IsNullOrEmpty(play) || !cfg.States.ContainsKey(play))
                 play = cfg.DefaultState;
-            _preview.LoadConfig(cfg, AppContext.BaseDirectory, play);
+            var baseDir = _workspaceRoot ?? AppContext.BaseDirectory;
+            _preview.LoadConfig(cfg, baseDir, play);
         }
         catch (Exception ex) {
             System.Windows.MessageBox.Show(this, $"预览失败：{ex.Message}", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
-    void LoadFromPath(string path, bool showErrors) {
+    void LoadAlicePackage(string alicePath) {
         UnsubscribeFrames();
+        TearDownWorkspace();
+        var root = Path.Combine(Path.GetTempPath(), "AL1_editor_ws_" + Guid.NewGuid().ToString("N"));
         try {
-            var cfg = OverlayAnimationConfigLoader.LoadFromFile(path);
+            Directory.CreateDirectory(root);
+            OverlayAlicePackage.ExtractArchiveToDirectory(alicePath, root);
+            var cfg = OverlayAlicePackage.LoadKeyFromDirectory(root);
             _document = EditorDocument.FromConfig(cfg);
-            _document.FilePath = path;
+            _document.FilePath = alicePath;
+            _workspaceRoot = root;
             _preferredPreviewState = cfg.DefaultState;
             RebuildTree();
             Dispatcher.BeginInvoke(SelectFirstLayer, DispatcherPriority.Loaded);
             RefreshPreview();
         }
-        catch (Exception ex) {
-            if (showErrors)
-                System.Windows.MessageBox.Show(this, $"打开失败：{ex.Message}", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Error);
-            else
-                throw;
+        catch {
+            OverlayAlicePackage.TryDeleteDirectory(root);
+            _workspaceRoot = null;
+            throw;
         }
     }
 
-    void SaveAsInternal() {
+    void CreateNewWorkspaceInternal() {
+        UnsubscribeFrames();
+        TearDownWorkspace();
+        var root = Path.Combine(Path.GetTempPath(), "AL1_editor_ws_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var assetsDir = Path.Combine(root, OverlayAlicePackage.AssetsFolderName);
+        Directory.CreateDirectory(assetsDir);
+        var logoPath = Path.Combine(assetsDir, "logo.png");
+        WriteMinimalPlaceholderPng(logoPath);
+
+        _document = EditorDocument.CreateMinimalForPreview();
+        _document.FilePath = null;
+        _workspaceRoot = root;
+        _preferredPreviewState = _document.ToConfig().DefaultState;
+        OverlayAlicePackage.WriteKeyToDirectory(root, _document.ToConfig());
+        RebuildTree();
+        Dispatcher.BeginInvoke(SelectFirstLayer, DispatcherPriority.Loaded);
+        RefreshPreview();
+    }
+
+    static void WriteMinimalPlaceholderPng(string path) {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using var b = new Bitmap(1, 1);
+        b.SetPixel(0, 0, Color.FromArgb(255, 200, 0, 200));
+        b.Save(path, ImageFormat.Png);
+    }
+
+    void SaveAliceToPath(string alicePath) {
+        if (_workspaceRoot is null)
+            throw new InvalidOperationException("工作区未初始化。");
+        var cfg = _document.ToConfig();
+        OverlayAlicePackage.WriteKeyToDirectory(_workspaceRoot, cfg);
+        OverlayAlicePackage.PackDirectoryToAlice(_workspaceRoot, alicePath);
+        _document.FilePath = alicePath;
+    }
+
+    void ExportAsInternal() {
+        if (_workspaceRoot is null) {
+            System.Windows.MessageBox.Show(this, "工作区未就绪。", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         var dlg = new Microsoft.Win32.SaveFileDialog {
-            Filter = "JSON (*.json)|*.json|All files (*.*)|*.*",
+            Filter = AliceFilter,
             InitialDirectory = GetAnimationsInitialDirectory(),
-            FileName = Path.GetFileName(_document.FilePath ?? "default.json")
+            FileName = Path.GetFileName(_document.FilePath ?? "Untitled.alice"),
+            DefaultExt = ".alice"
         };
         if (dlg.ShowDialog(this) != true)
             return;
         try {
-            var cfg = _document.ToConfig();
-            OverlayAnimationConfigLoader.SaveToFile(dlg.FileName, cfg);
-            _document.FilePath = dlg.FileName;
+            SaveAliceToPath(dlg.FileName);
         }
         catch (Exception ex) {
-            System.Windows.MessageBox.Show(this, $"保存失败：{ex.Message}", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Error);
+            System.Windows.MessageBox.Show(this, $"导出失败：{ex.Message}", "动画编辑器", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
     static string GetAnimationsInitialDirectory() {
         var dir = Path.Combine(AppContext.BaseDirectory, "Assets", "overlay_animations");
         return Directory.Exists(dir) ? dir : AppContext.BaseDirectory;
+    }
+
+    void TearDownWorkspace() {
+        if (_workspaceRoot is null)
+            return;
+        OverlayAlicePackage.TryDeleteDirectory(_workspaceRoot);
+        _workspaceRoot = null;
     }
 
     void RebuildTree() {

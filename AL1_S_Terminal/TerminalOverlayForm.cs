@@ -2,7 +2,6 @@ using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 using System.Diagnostics;
-using System.Text.Json;
 using AL1_S_Terminal.OverlayAnimations.Config;
 using AL1_S_Terminal.OverlayAnimations.Runtime;
 using AL1_S_Terminal.Win32;
@@ -16,6 +15,7 @@ sealed class TerminalOverlayForm : Form {
     const int WsExNoactivate = unchecked((int)0x0800_0000);
 
     readonly OverlayAnimationHost? _host;
+    readonly OverlayAliceExtractSession? _aliceSession;
     readonly IOverlayAnimator _animator;
 
     /// <summary>Overlay animation controller; call <see cref="IOverlayAnimator.SetState"/> to switch states.</summary>
@@ -47,24 +47,25 @@ sealed class TerminalOverlayForm : Form {
         BackgroundImageLayout = ImageLayout.Stretch;
         DoubleBuffered = true;
 
-        var baseDir = AppContext.BaseDirectory;
-        var cfgPath = Path.Combine(baseDir, "Assets", "overlay_animations", "default.json");
+        var alicePath = Path.Combine(AppContext.BaseDirectory, "Assets", "overlay_animations", "Default.alice");
 
         try {
-            var cfg = OverlayAnimationConfigLoader.LoadFromFile(cfgPath);
-            _host = OverlayAnimationHost.CreateAndAttach(this, cfg, baseDir);
+            _aliceSession = OverlayAlicePackage.LoadExtracted(alicePath);
+            _host = OverlayAnimationHost.CreateAndAttach(this, _aliceSession.Config, _aliceSession.BaseDirectory);
             _animator = _host;
         }
-        catch (Exception ex) when (ex is IOException or JsonException) {
-            Debug.WriteLine($"[TerminalOverlayForm] Failed to load default overlay animation config: {cfgPath}");
+        catch (Exception ex) {
+            Debug.WriteLine($"[TerminalOverlayForm] Failed to load default overlay animation package: {alicePath}");
             Debug.WriteLine(ex);
             _animator = new NullOverlayAnimator();
         }
     }
 
     protected override void Dispose(bool disposing) {
-        if (disposing)
+        if (disposing) {
             _host?.Dispose();
+            _aliceSession?.Dispose();
+        }
         base.Dispose(disposing);
     }
 

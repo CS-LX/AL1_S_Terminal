@@ -8,9 +8,10 @@
         WindowStartupLocation="CenterScreen">
     <DockPanel>
         <ToolBar DockPanel.Dock="Top">
-            <Button x:Name="OpenButton" Content="打开" Padding="8,2" Margin="0,0,4,0" Click="OpenButton_Click" />
-            <Button x:Name="SaveButton" Content="保存" Padding="8,2" Margin="0,0,4,0" Click="SaveButton_Click" />
-            <Button x:Name="SaveAsButton" Content="另存为" Padding="8,2" Margin="0,0,4,0" Click="SaveAsButton_Click" />
+            <Button x:Name="NewButton" Content="新建" Padding="8,2" Margin="0,0,4,0" Click="NewButton_Click" />
+            <Button x:Name="ImportButton" Content="导入" Padding="8,2" Margin="0,0,4,0" Click="ImportButton_Click" />
+            <Button x:Name="ExportButton" Content="导出" Padding="8,2" Margin="0,0,4,0" Click="ExportButton_Click" />
+            <Button x:Name="ExportAsButton" Content="导出为" Padding="8,2" Margin="0,0,4,0" Click="ExportAsButton_Click" />
             <Separator />
             <Button x:Name="PlayButton" Content="播放" Padding="8,2" Margin="0,0,4,0" Click="PlayButton_Click" />
             <Button x:Name="PauseButton" Content="暂停" Padding="8,2" Margin="0,0,4,0" Click="PauseButton_Click" />

@@ -118,7 +118,7 @@ public sealed class EditorDocument {
             Version = 1,
             DefaultState = "Idle"
         };
-        cfg.Images["logo"] = "Assets/overlay_animations/images/logo.png";
+        cfg.Images["logo"] = "assets/logo.png";
         cfg.States["Idle"] = new OverlayAnimationStateConfig { Clip = "idle", Loop = true };
         var clip = new OverlayAnimationClipConfig { DurationMs = 1000 };
         clip.Layers["L"] = new OverlayAnimationLayerConfig {
