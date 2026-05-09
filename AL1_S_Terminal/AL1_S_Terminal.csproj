@@ -23,6 +23,10 @@
 
 	</PropertyGroup>
 
+	<PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+	  <DebugType>none</DebugType>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<Resource Include="Assets\window_bg.png" />
 		<Resource Include="Assets\app.ico" />
