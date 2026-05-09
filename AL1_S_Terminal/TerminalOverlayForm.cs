@@ -41,6 +41,11 @@ sealed class TerminalOverlayForm : Form {
 
             _useLayeredOverlay = true;
 
+            // Must run before any code that creates the handle. Otherwise WinForms paints default gray over ULW.
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
+            SetStyle(ControlStyles.OptimizedDoubleBuffer, false);
+            BackColor = Color.Black;
+
             var w = cfg.Width;
             var h = cfg.Height;
             var s = new Size(w, h);
@@ -95,6 +100,27 @@ sealed class TerminalOverlayForm : Form {
                 cp.ExStyle |= WsExLayered;
             return cp;
         }
+    }
+
+    protected override void OnPaintBackground(PaintEventArgs e) {
+        if (_useLayeredOverlay)
+            return;
+        base.OnPaintBackground(e);
+    }
+
+    protected override void OnPaint(PaintEventArgs e) {
+        if (_useLayeredOverlay)
+            return;
+        base.OnPaint(e);
+    }
+
+    protected override void WndProc(ref Message m) {
+        const int WM_ERASEBKGND = 0x0014;
+        if (_useLayeredOverlay && m.Msg == WM_ERASEBKGND) {
+            m.Result = new IntPtr(1);
+            return;
+        }
+        base.WndProc(ref m);
     }
 
     sealed class NullOverlayAnimator : IOverlayAnimator {
