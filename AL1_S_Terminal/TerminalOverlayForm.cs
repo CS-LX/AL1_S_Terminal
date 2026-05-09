@@ -1,6 +1,8 @@
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using System.Diagnostics;
+using System.Text.Json;
 using AL1_S_Terminal.OverlayAnimations.Config;
 using AL1_S_Terminal.OverlayAnimations.Runtime;
 using AL1_S_Terminal.Win32;
@@ -13,10 +15,11 @@ namespace AL1_S_Terminal;
 sealed class TerminalOverlayForm : Form {
     const int WsExNoactivate = unchecked((int)0x0800_0000);
 
-    private readonly OverlayAnimationHost _host;
+    readonly OverlayAnimationHost? _host;
+    readonly IOverlayAnimator _animator;
 
     /// <summary>Overlay animation controller; call <see cref="IOverlayAnimator.SetState"/> to switch states.</summary>
-    public IOverlayAnimator Animator => _host;
+    public IOverlayAnimator Animator => _animator;
 
     public TerminalOverlayForm() {
         TopLevel = true;
@@ -46,13 +49,22 @@ sealed class TerminalOverlayForm : Form {
 
         var baseDir = AppContext.BaseDirectory;
         var cfgPath = Path.Combine(baseDir, "Assets", "overlay_animations", "default.json");
-        var cfg = OverlayAnimationConfigLoader.LoadFromFile(cfgPath);
-        _host = OverlayAnimationHost.CreateAndAttach(this, cfg, baseDir);
+
+        try {
+            var cfg = OverlayAnimationConfigLoader.LoadFromFile(cfgPath);
+            _host = OverlayAnimationHost.CreateAndAttach(this, cfg, baseDir);
+            _animator = _host;
+        }
+        catch (Exception ex) when (ex is IOException or JsonException) {
+            Debug.WriteLine($"[TerminalOverlayForm] Failed to load default overlay animation config: {cfgPath}");
+            Debug.WriteLine(ex);
+            _animator = new NullOverlayAnimator();
+        }
     }
 
     protected override void Dispose(bool disposing) {
         if (disposing)
-            _host.Dispose();
+            _host?.Dispose();
         base.Dispose(disposing);
     }
 
@@ -62,5 +74,14 @@ sealed class TerminalOverlayForm : Form {
             cp.ExStyle |= WsExNoactivate;
             return cp;
         }
+    }
+
+    sealed class NullOverlayAnimator : IOverlayAnimator {
+        public string? CurrentState => null;
+        public void PlayDefault() { }
+        public void SetState(string stateName, bool restart = true) { }
+        public bool TrySetState(string stateName, bool restart = true) => false;
+        public void Stop() { }
+        public void ReloadConfig() { }
     }
 }
