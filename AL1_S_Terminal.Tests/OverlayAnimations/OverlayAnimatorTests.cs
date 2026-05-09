@@ -166,6 +166,20 @@ internal static class TestConfigs
 public sealed class OverlayAnimatorTests
 {
 	[Fact]
+	public void TwoStatesDifferentX()
+	{
+		var cfg = TestConfigs.TwoStatesDifferentX();
+		var animator = new OverlayAnimator(cfg);
+		animator.PlayDefault();
+		var idleX = animator.Sample(0).Items[0].X;
+
+		animator.SetState("Pulse");
+		var pulseX = animator.Sample(0).Items[0].X;
+
+		Assert.NotEqual(idleX, pulseX);
+	}
+
+	[Fact]
 	public void CanSwitchStateExternally()
 	{
 		var cfg = TestConfigs.TwoStatesDifferentX();
