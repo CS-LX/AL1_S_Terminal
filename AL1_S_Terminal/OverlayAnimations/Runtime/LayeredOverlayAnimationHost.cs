@@ -21,6 +21,7 @@ public sealed class LayeredOverlayAnimationHost : IOverlayAnimator, IDisposable 
 	readonly System.Windows.Forms.Timer _timer = new() { Interval = 16 };
 	readonly Stopwatch _stopwatch = new();
 	Bitmap? _buffer;
+	LayeredDibSection? _dib;
 	bool _disposed;
 
 	LayeredOverlayAnimationHost(Form form, OverlayAnimationConfig config, OverlayImageAtlas atlas) {
@@ -88,6 +89,8 @@ public sealed class LayeredOverlayAnimationHost : IOverlayAnimator, IDisposable 
 		_timer.Stop();
 		_timer.Tick -= OnTimerTick;
 		_timer.Dispose();
+		_dib?.Dispose();
+		_dib = null;
 		_buffer?.Dispose();
 		_buffer = null;
 		_atlas.Dispose();
@@ -96,10 +99,13 @@ public sealed class LayeredOverlayAnimationHost : IOverlayAnimator, IDisposable 
 	void EnsureBuffer(Size client) {
 		if (client.Width < 1 || client.Height < 1)
 			return;
-		if (_buffer is not null && _buffer.Size == client)
+		if (_buffer is not null && _buffer.Size == client && _dib is not null)
 			return;
+		_dib?.Dispose();
+		_dib = null;
 		_buffer?.Dispose();
 		_buffer = new Bitmap(client.Width, client.Height, PixelFormat.Format32bppPArgb);
+		_dib = new LayeredDibSection(client.Width, client.Height);
 	}
 
 	void OnTimerTick(object? sender, EventArgs e) {
@@ -107,7 +113,7 @@ public sealed class LayeredOverlayAnimationHost : IOverlayAnimator, IDisposable 
 			return;
 		var client = _form.ClientSize;
 		EnsureBuffer(client);
-		if (_buffer is null)
+		if (_buffer is null || _dib is null)
 			return;
 
 		var elapsedMs = (int)_stopwatch.ElapsedMilliseconds;
@@ -118,7 +124,7 @@ public sealed class LayeredOverlayAnimationHost : IOverlayAnimator, IDisposable 
 			OverlayAnimationPainter.Draw(g, _atlas, snapshot);
 		}
 
-		if (!LayeredWindowInterop.UpdateFromPremultipliedBitmap(_form.Handle, _buffer))
+		if (!_dib.CopyFromAndUpdateLayeredWindow(_form.Handle, _buffer))
 			Debug.WriteLine($"[LayeredOverlayAnimationHost] UpdateLayeredWindow failed, Win32 error {Marshal.GetLastWin32Error()}");
 	}
 
