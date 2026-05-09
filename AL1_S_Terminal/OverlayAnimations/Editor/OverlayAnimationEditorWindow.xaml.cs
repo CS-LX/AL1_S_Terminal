@@ -56,8 +56,8 @@ public partial class OverlayAnimationEditorWindow : Window {
     protected override void OnClosed(EventArgs e) {
         UnsubscribeFrames();
         _debounce.Stop();
-        _preview.Dispose();
         TearDownWorkspace();
+        _preview.Dispose();
         base.OnClosed(e);
     }
 
@@ -255,6 +255,7 @@ public partial class OverlayAnimationEditorWindow : Window {
     void TearDownWorkspace() {
         if (_workspaceRoot is null)
             return;
+        _preview.ReleaseWorkspaceFileLocks();
         OverlayAlicePackage.TryDeleteDirectory(_workspaceRoot);
         _workspaceRoot = null;
     }

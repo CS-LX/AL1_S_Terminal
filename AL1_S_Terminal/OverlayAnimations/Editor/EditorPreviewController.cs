@@ -28,16 +28,23 @@ public sealed class EditorPreviewController : IDisposable {
         _tick.Tick += OnTick;
     }
 
-    public void LoadConfig(OverlayAnimationConfig cfg, string baseDir, string? playStateName = null) {
-        ArgumentNullException.ThrowIfNull(cfg);
-        ArgumentNullException.ThrowIfNull(baseDir);
-
+    /// <summary>
+    /// Stops the preview timer and disposes loaded images so files under the editor workspace folder can be deleted on Windows (GDI+ keeps files open while <see cref="OverlayImageAtlas"/> holds them).
+    /// </summary>
+    public void ReleaseWorkspaceFileLocks() {
         Pause();
         _host.Child = null;
         _atlas?.Dispose();
         _atlas = null;
         _control = null;
         _animator = null;
+    }
+
+    public void LoadConfig(OverlayAnimationConfig cfg, string baseDir, string? playStateName = null) {
+        ArgumentNullException.ThrowIfNull(cfg);
+        ArgumentNullException.ThrowIfNull(baseDir);
+
+        ReleaseWorkspaceFileLocks();
 
         _atlas = new OverlayImageAtlas(cfg.Images, baseDir);
         _control = new OverlayAnimationControl(_atlas) { Dock = DockStyle.Fill };
@@ -111,13 +118,8 @@ public sealed class EditorPreviewController : IDisposable {
     }
 
     public void Dispose() {
-        Pause();
         _tick.Tick -= OnTick;
-        _atlas?.Dispose();
-        _atlas = null;
-        _control = null;
-        _animator = null;
-        _host.Child = null;
+        ReleaseWorkspaceFileLocks();
     }
 }
 
