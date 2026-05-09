@@ -2,26 +2,6 @@ using AL1_S_Terminal.OverlayAnimations.Model;
 
 namespace AL1_S_Terminal.OverlayAnimations.Runtime;
 
-public sealed class OverlayRenderSnapshot
-{
-	public IReadOnlyList<OverlayRenderItem> Items { get; }
-
-	public OverlayRenderSnapshot(IReadOnlyList<OverlayRenderItem> items) => Items = items;
-}
-
-public sealed class OverlayRenderItem
-{
-	public required string ImageKey { get; init; }
-
-	public int X { get; init; }
-
-	public int Y { get; init; }
-
-	public double Opacity { get; init; }
-
-	public double Scale { get; init; }
-}
-
 public sealed class OverlayAnimator
 {
 	private readonly OverlayAnimationConfig _config;
