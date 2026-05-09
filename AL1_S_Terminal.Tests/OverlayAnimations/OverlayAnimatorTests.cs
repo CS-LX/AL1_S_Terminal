@@ -1,3 +1,4 @@
+using AL1_S_Terminal.OverlayAnimations.Config;
 using AL1_S_Terminal.OverlayAnimations.Model;
 using AL1_S_Terminal.OverlayAnimations.Runtime;
 using Xunit;
@@ -122,6 +123,19 @@ public sealed class OverlayAnimatorTests
 		Assert.Equal("logo", snapshot.Items[0].ImageKey);
 		Assert.Equal(10, snapshot.Items[0].X);
 		Assert.Equal(20, snapshot.Items[0].Y);
+	}
+
+	[Fact]
+	public void JsonRoundTripPreservesCoreFields()
+	{
+		var cfg = TestConfigs.OneLayerTwoFrames();
+		var json = OverlayAnimationConfigLoader.ToJson(cfg);
+		var back = OverlayAnimationConfigLoader.FromJson(json);
+
+		var animator = new OverlayAnimator(back);
+		animator.PlayDefault();
+		var s = animator.Sample(ms: 500);
+		Assert.Equal(5, s.Items[0].X);
 	}
 
 	[Fact]
