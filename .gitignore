@@ -43,3 +43,7 @@ desktop.ini
 ## Coverage / tooling
 *.coverage
 *.dotCover
+
+## Local dotnet output (e.g. -o artifacts/…)
+artifacts/
+TestResults/
