@@ -26,15 +26,18 @@
 
             <TreeView x:Name="StructureTree"
                       Grid.Column="0"
-                      Margin="8" />
+                      Margin="8"
+                      SelectedItemChanged="StructureTree_OnSelectedItemChanged" />
 
             <DataGrid x:Name="KeyframesGrid"
                       Grid.Column="1"
                       Margin="8"
                       AutoGenerateColumns="False"
-                      CanUserAddRows="False"
-                      CanUserDeleteRows="False"
-                      IsReadOnly="True">
+                      CanUserAddRows="True"
+                      CanUserDeleteRows="True"
+                      IsReadOnly="False"
+                      CellEditEnding="KeyframesGrid_OnCellEditEnding"
+                      RowEditEnding="KeyframesGrid_OnRowEditEnding">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="t (ms)" Binding="{Binding T}" Width="70" />
                     <DataGridTextColumn Header="x" Binding="{Binding X}" Width="60" />
