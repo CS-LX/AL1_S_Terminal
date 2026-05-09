@@ -7,8 +7,8 @@
         Width="1000"
         Height="680"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource Editor.BgBrush}"
-        Foreground="{StaticResource Editor.FgBrush}">
+        Background="{DynamicResource Editor.BgBrush}"
+        Foreground="{DynamicResource Editor.FgBrush}">
     <Window.Resources>
         <Color x:Key="Editor.Bg">#1E1E1E</Color>
         <Color x:Key="Editor.Panel">#252526</Color>
@@ -53,12 +53,106 @@
             <Setter Property="Padding" Value="4,2" />
         </Style>
 
+        <!-- ComboBoxItem: dark list rows; IsHighlighted drives keyboard/mouse hover in popup -->
+        <Style x:Key="EditorComboBoxItem" TargetType="ComboBoxItem">
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Background" Value="{StaticResource Editor.PanelBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource Editor.FgBrush}" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderThickness="0"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Editor.SelectionBgBrush}" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{StaticResource Editor.FgMutedBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="EditorComboBox" TargetType="ComboBox">
             <Setter Property="Background" Value="{StaticResource Editor.InputBgBrush}" />
             <Setter Property="Foreground" Value="{StaticResource Editor.FgBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource Editor.BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource EditorComboBoxItem}" />
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid x:Name="ComboTemplateRoot" SnapsToDevicePixels="True">
+                            <Popup x:Name="PART_Popup"
+                                   AllowsTransparency="True"
+                                   Margin="0,1,0,0"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   Placement="Bottom"
+                                   PopupAnimation="Fade">
+                                <Border MinWidth="{Binding ActualWidth, ElementName=ComboTemplateRoot}"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                        Background="{StaticResource Editor.PanelBrush}"
+                                        BorderBrush="{StaticResource Editor.BorderBrush}"
+                                        BorderThickness="1"
+                                        SnapsToDevicePixels="True">
+                                    <ScrollViewer Padding="0,2" SnapsToDevicePixels="True">
+                                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                            <Border x:Name="MainBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}">
+                                <Grid>
+                                    <ToggleButton x:Name="DropDownToggle"
+                                                  HorizontalAlignment="Stretch"
+                                                  VerticalAlignment="Stretch"
+                                                  Focusable="False"
+                                                  ClickMode="Press"
+                                                  Background="Transparent"
+                                                  BorderThickness="0"
+                                                  IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" />
+                                    <Grid IsHitTestVisible="False">
+                                        <ContentPresenter x:Name="ContentSite"
+                                                          Margin="{TemplateBinding Padding}"
+                                                          HorizontalAlignment="Left"
+                                                          VerticalAlignment="Center"
+                                                          RecognizesAccessKey="True"
+                                                          Content="{TemplateBinding SelectionBoxItem}"
+                                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                          ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" />
+                                        <Path HorizontalAlignment="Right"
+                                              VerticalAlignment="Center"
+                                              Margin="0,0,8,0"
+                                              Data="M 0 0 L 3.5 4 L 7 0 Z"
+                                              Fill="{StaticResource Editor.FgBrush}" />
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ContentSite" Property="Opacity" Value="0.55" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="EditorToolBarButton" TargetType="Button">
