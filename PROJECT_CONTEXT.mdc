@@ -1,0 +1,99 @@
+## 项目概览
+
+本项目是一个 Windows 桌面常驻小工具：
+
+- **常驻托盘**：程序默认不显示任务栏图标，通过系统托盘右键菜单退出。
+- **检测 Windows Terminal**：当检测到 `WindowsTerminal.exe` 打开时，显示一个 200×200 的叠加层窗口；终端关闭后叠加层消失。
+- **叠加层**：背景使用项目资源 `Assets/window_bg.png`，位置锚定在终端“黑区”（WinUI bridge）左下角。
+
+> 重要：由于 Windows Terminal/WinUI 的合成与窗口层级限制，项目最终采用“**顶层 owned window** + 屏幕坐标锚定”的方式实现叠加，而不是 `SetParent` 真内嵌。
+
+---
+
+## 运行时架构（模块/职责）
+
+### `AL1_S_Terminal`（WPF 入口 + 托盘 + 调度）
+
+- **`App.xaml` / `App.xaml.cs`**
+  - 设置 `ShutdownMode="OnExplicitShutdown"`，确保程序由托盘菜单显式退出。
+  - 创建托盘 `NotifyIcon`，右键菜单包含“退出”。
+  - `DEBUG` 下提供“复制 overlay 句柄”用于 Spy++ 排查。
+  - 设置 WinForms DPI 模式：`Application.SetHighDpiMode(PerMonitorV2)`，避免高 DPI 下尺寸缩放异常。
+
+- **`MainWindow.xaml` / `MainWindow.xaml.cs`**
+  - 作为“载体窗口”：保持隐藏，不承担 UI。
+  - 使用 `DispatcherTimer`（约 16ms）循环：
+    - 查找 Windows Terminal 顶层窗口句柄（Cascadia host）。
+    - 解析锚点窗口句柄（最内层 `DesktopWindowContentBridge`）。
+    - 创建/复用叠加层 `TerminalOverlayForm`（WinForms）。
+    - 将叠加层以 **owned window** 方式挂到 Terminal 顶层（解决被覆盖问题）。
+    - 每 tick 通过 Win32 将叠加层移动到锚点窗口矩形左下角。
+
+- **`TerminalOverlayForm.cs`**
+  - 顶层无边框 WinForms 窗口（`TopLevel=true`、`FormBorderStyle=None`、`ShowInTaskbar=false`）。
+  - 设置 `WS_EX_NOACTIVATE`，尽量不抢焦点。
+  - 背景图从 WPF 资源流读取：`pack://application:,,,/Assets/window_bg.png`。
+  - 尺寸固定为 `TerminalOverlayInterop.OverlayWidth/Height`（当前为 200×200）。
+
+### `AL1_S_Terminal.Win32`（CsWin32 + 终端窗口定位）
+
+- **`NativeMethods.txt`**
+  - CsWin32 源生成的 API 白名单。只保留项目实际用到的 Win32 API。
+
+- **`TerminalOverlayInterop.cs`**
+  - **窗口发现**：`EnumWindows` + `GetWindowThreadProcessId`，筛选进程名为 `WindowsTerminal`，优先类名 `CASCADIA_HOSTING_WINDOW_CLASS`。
+  - **锚点选择**：在 Cascadia host 子树中 BFS 查找 `Windows.UI.Composition.DesktopWindowContentBridge`，挑选“最内层且面积最大”的一个作为锚点（终端黑区）。
+  - **定位**：对锚点 `GetWindowRect` 得到屏幕矩形，将 overlay 移动到左下角（`x=left`, `y=bottom-OverlayHeight`）。
+  - **Z 序策略**：定位时使用 `SWP_NOZORDER`，由 WinForms **owned window** 关系保证叠加层始终在 Terminal 之上。
+
+---
+
+## 关键行为与约束（AI Agent 必读）
+
+### 1) 为什么不用 `SetParent` 真内嵌
+
+Windows Terminal 使用 WinUI/XAML 岛（如 `DesktopWindowXamlSource` / `DesktopWindowContentBridge`）进行合成渲染，外来 HWND 作为子窗口往往会：
+
+- 被 WinUI 子树覆盖或完全不可见；
+- 句柄层级和 Spy++ 显示不稳定（不同版本/系统/渲染路径会变）。
+
+因此当前策略是：
+
+- **overlay 是顶层窗口**；
+- 通过 **owned window** 关系绑定到 Terminal 顶层，以保持 Z 序；
+- 用 **屏幕坐标锚定**追踪位置。
+
+### 2) 多终端实例
+
+当前逻辑会在枚举中选择一个“最合适”的 Windows Terminal 顶层窗口（通常是面积最大/可见的 host）。如需支持多实例、多窗口同时叠加，需要：
+
+- 把 “找到一个 host” 改为 “找到全部 host 列表”，并为每个 host 维护一个 overlay。
+
+### 3) DPI / 缩放
+
+- 尺寸固定 200×200（逻辑像素/屏幕像素的差异会影响实际大小）。
+- 已设置 `PerMonitorV2` 和 WinForms `AutoScaleMode=None` 来稳定像素尺寸。
+
+### 4) 退出与隐藏
+
+- 托盘菜单“退出”会调用 `Shutdown()`，触发 `OnExit` 释放托盘图标。
+- 当找不到 Windows Terminal 时，会销毁 overlay 并保持载体窗口隐藏。
+
+---
+
+## 关键文件速览
+
+- **入口/托盘**：`AL1_S_Terminal/App.xaml.cs`
+- **调度循环**：`AL1_S_Terminal/MainWindow.xaml.cs`
+- **叠加层窗口（WinForms）**：`AL1_S_Terminal/TerminalOverlayForm.cs`
+- **Win32 查找/定位**：`AL1_S_Terminal.Win32/TerminalOverlayInterop.cs`
+- **CsWin32 API 清单**：`AL1_S_Terminal.Win32/NativeMethods.txt`
+- **资源图**：`AL1_S_Terminal/Assets/window_bg.png`
+
+---
+
+## 常用排查手段
+
+- **Spy++**：`DEBUG` 托盘菜单可复制 overlay HWND，用于快速定位窗口与父/owner 关系。
+- **看锚点是否正确**：锚点窗口类名应接近 WinUI bridge（`Windows.UI.Composition.DesktopWindowContentBridge`），其 `GetWindowRect` 对应终端内容区域。
+
