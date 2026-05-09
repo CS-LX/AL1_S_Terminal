@@ -10,6 +10,15 @@
 
 ## 获取与运行
 
+### 从 GitHub Releases 下载（推荐）
+
+预编译包见 **[Releases](https://github.com/CS-LX/AL1_S_Terminal/releases)**。
+
+- **当前最新**：标签 **`v1.0.0.0`**，附件 **`v1.0.0.0_win64.zip`**（Windows x64 可执行程序包）。下载后解压到任意目录，运行其中的 **`AL1_S_Terminal.exe`** 即可。
+- Releases 页面还会提供 GitHub 自动生成的 **Source code (zip / tar.gz)**，那是源码快照；日常使用请优先下载带 **`win64`** 的 zip。
+
+后续若发布新版本，请到 Releases 列表中选择 **Latest** 或你需要的版本号，下载对应 **`_win64.zip`** 即可。
+
 ### 从源码构建
 
 在仓库根目录（包含 `AL1_S_Terminal.sln`）执行：
