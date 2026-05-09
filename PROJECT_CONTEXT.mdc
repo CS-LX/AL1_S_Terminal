@@ -3,8 +3,8 @@
 本项目是一个 Windows 桌面常驻小工具：
 
 - **常驻托盘**：程序默认不显示任务栏图标，通过系统托盘右键菜单退出。
-- **检测 Windows Terminal**：当检测到 `WindowsTerminal.exe` 打开时，显示一个 200×200 的叠加层窗口；终端关闭后叠加层消失。
-- **叠加层**：背景使用项目资源 `Assets/window_bg.png`，位置锚定在终端“黑区”（WinUI bridge）左下角。
+- **检测 Windows Terminal**：当检测到 `WindowsTerminal.exe` 打开时，显示叠加层窗口；终端关闭后叠加层消失。
+- **叠加层内容**：默认从 **`Assets/overlay_animations/Default.alice`** 加载动画包（ZIP：`key.json` + `assets/`）。尺寸由 **`key.json` 的 `width` / `height`** 决定（缺省或非法时规范为 **200×200**，合法范围约 **16–8192**）。加载失败时回退为资源 **`Assets/window_bg.png`** 作为背景图。
 
 > 重要：由于 Windows Terminal/WinUI 的合成与窗口层级限制，项目最终采用“**顶层 owned window** + 屏幕坐标锚定”的方式实现叠加，而不是 `SetParent` 真内嵌。
 
@@ -16,7 +16,7 @@
 
 - **`App.xaml` / `App.xaml.cs`**
   - 设置 `ShutdownMode="OnExplicitShutdown"`，确保程序由托盘菜单显式退出。
-  - 创建托盘 `NotifyIcon`，右键菜单包含“退出”。
+  - 创建托盘 `NotifyIcon`，右键菜单包含“退出”及动画相关项。
   - `DEBUG` 下提供“复制 overlay 句柄”用于 Spy++ 排查。
   - 设置 WinForms DPI 模式：`Application.SetHighDpiMode(PerMonitorV2)`，避免高 DPI 下尺寸缩放异常。
 
@@ -27,13 +27,13 @@
     - 解析锚点窗口句柄（最内层 `DesktopWindowContentBridge`）。
     - 创建/复用叠加层 `TerminalOverlayForm`（WinForms）。
     - 将叠加层以 **owned window** 方式挂到 Terminal 顶层（解决被覆盖问题）。
-    - 每 tick 通过 Win32 将叠加层移动到锚点窗口矩形左下角。
+    - 每 tick 通过 Win32 将叠加层移动到锚点窗口矩形左下角；**宽高使用 `TerminalOverlayForm.ClientSize`**，与动画配置一致。
 
 - **`TerminalOverlayForm.cs`**
   - 顶层无边框 WinForms 窗口（`TopLevel=true`、`FormBorderStyle=None`、`ShowInTaskbar=false`）。
   - 设置 `WS_EX_NOACTIVATE`，尽量不抢焦点。
-  - 背景图从 WPF 资源流读取：`pack://application:,,,/Assets/window_bg.png`。
-  - 尺寸固定为 `TerminalOverlayInterop.OverlayWidth/Height`（当前为 200×200）。
+  - **动画加载成功**：`WS_EX_LAYERED` + **`LayeredOverlayAnimationHost`**（见下文），**不**再铺 `window_bg.png`；在创建句柄前设置 **`SetStyle(AllPaintingInWmPaint | UserPaint)`**、关闭 **`OptimizedDoubleBuffer`**，并 **`OnPaintBackground` / `OnPaint` 短路**、**`WM_ERASEBKGND` 直接返回已处理**，避免 WinForms 用默认灰底与 **`UpdateLayeredWindow`** 的合成结果叠在一起（表现为半透明“灰方块”且能透出背后终端文字）。
+  - **动画加载失败**：与早期行为一致，使用 **`window_bg.png`** 拉伸背景，`DoubleBuffered=true`。
 
 ### `AL1_S_Terminal.Win32`（CsWin32 + 终端窗口定位）
 
@@ -43,8 +43,39 @@
 - **`TerminalOverlayInterop.cs`**
   - **窗口发现**：`EnumWindows` + `GetWindowThreadProcessId`，筛选进程名为 `WindowsTerminal`，优先类名 `CASCADIA_HOSTING_WINDOW_CLASS`。
   - **锚点选择**：在 Cascadia host 子树中 BFS 查找 `Windows.UI.Composition.DesktopWindowContentBridge`，挑选“最内层且面积最大”的一个作为锚点（终端黑区）。
-  - **定位**：对锚点 `GetWindowRect` 得到屏幕矩形，将 overlay 移动到左下角（`x=left`, `y=bottom-OverlayHeight`）。
+  - **定位**：`TryPositionOverlayScreen(anchorHwnd, overlayHwnd, overlayWidth, overlayHeight)`：对锚点 `GetWindowRect`，将 overlay 放到左下角（`x=left`, `y=bottom-height`）。宽、高须与 overlay 客户区一致；非法尺寸时回退 **`DefaultOverlayWidth` / `DefaultOverlayHeight`（200）**。
   - **Z 序策略**：定位时使用 `SWP_NOZORDER`，由 WinForms **owned window** 关系保证叠加层始终在 Terminal 之上。
+
+### 叠加动画与 `.alice` 包（`AL1_S_Terminal/OverlayAnimations/`）
+
+- **包格式**：扩展名 **`.alice`**，ZIP 根目录含 **`key.json`** 与 **`assets/`**；图块路径为包内相对路径（如 `assets/logo.png`）。
+- **加载**：`OverlayAlicePackage.LoadExtracted` 解压到临时目录；`OverlayAnimationConfigLoader` 在反序列化后 **`NormalizeOverlayDimensions`**，修正缺失的 `width`/`height`（JSON 缺省时为 0）。
+- **运行时驱动**：`LayeredOverlayAnimationHost` 定时 `OverlayAnimator.Sample` → **`OverlayAnimationPainter`** 画到 **`Format32bppPArgb`** 位图 → 通过 DIB 提交 **`UpdateLayeredWindow`**（见下一节）。
+- **编辑器**：WPF `OverlayAnimationEditorWindow`，预览用 **`WindowsFormsHost` + `OverlayAnimationControl`**（普通子控件绘制，不走分层整窗）。
+
+---
+
+## 分层窗口与 `UpdateLayeredWindow`（必读经验）
+
+### 症状
+
+- Overlay 只有**半透明灰块**，能隐约看到背后控制台文字；**编辑器里预览正常**。
+
+### 原因一：WinForms 仍在画客户区
+
+对带 **`WS_EX_LAYERED`** 且用 **`UpdateLayeredWindow(ULW_ALPHA)`** 提供像素的窗口，若仍执行默认的 **`OnPaintBackground` / `WM_ERASEBKGND`**，会用 **`BackColor`（偏灰）** 擦背景，与 ULW 结果混合 → **灰块**。  
+**处理**：在“分层动画”模式下短路 **`OnPaintBackground` / `OnPaint`**、拦截 **`WM_ERASEBKGND`**；并在**可能创建句柄之前**设置 **`SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true)`** 等（见 `TerminalOverlayForm`）。
+
+### 原因二：`Graphics.GetHdc()` 位图 + ULW 不可靠
+
+用 **`Graphics.FromImage(bitmap).GetHdc()`** 作为 **`UpdateLayeredWindow`** 的 `hdcSrc`，在不少环境下**与 ULW 期望的 DIB/DC 组合不兼容**，结果像素未正确参与分层合成 → 仍像一块空/灰的板。  
+**处理**：使用 **`CreateDIBSection`** 得到 **32bpp** 的 **`ppvBits`**，**`CreateCompatibleDC` + `SelectObject`** 得到内存 DC；每帧在 GDI+ 位图上画完后 **`LockBits`**，按行复制到 DIB（注意 **`dibStride`** 行对齐，行尾用 **`Array.Clear`** 补零），再 **`UpdateLayeredWindow`**。实现见 **`LayeredDibSection`** + **`LayeredWindowInterop.UpdateLayeredWindowFromSourceDc`**。
+
+### 小结（实现检查清单）
+
+1. **`WS_EX_LAYERED`** 在 **`CreateParams`** 中打开；**不要**在 WinForms 默认路径上再画一层不透明/灰底客户区。  
+2. 像素源优先：**DIB Section + memDC** → **`UpdateLayeredWindow`**；避免依赖 **`GetHdc()`** 直链 ULW。  
+3. 动画绘制与编辑器共用 **`OverlayAnimationPainter`**，保证与 **`OverlayImageAtlas`** 行为一致。
 
 ---
 
@@ -71,7 +102,7 @@ Windows Terminal 使用 WinUI/XAML 岛（如 `DesktopWindowXamlSource` / `Deskto
 
 ### 3) DPI / 缩放
 
-- 尺寸固定 200×200（逻辑像素/屏幕像素的差异会影响实际大小）。
+- 叠加层像素尺寸由 **`key.json`** 的 **`width` / `height`** 决定（见上）。
 - 已设置 `PerMonitorV2` 和 WinForms `AutoScaleMode=None` 来稳定像素尺寸。
 
 ### 4) 退出与隐藏
@@ -86,9 +117,13 @@ Windows Terminal 使用 WinUI/XAML 岛（如 `DesktopWindowXamlSource` / `Deskto
 - **入口/托盘**：`AL1_S_Terminal/App.xaml.cs`
 - **调度循环**：`AL1_S_Terminal/MainWindow.xaml.cs`
 - **叠加层窗口（WinForms）**：`AL1_S_Terminal/TerminalOverlayForm.cs`
+- **分层 ULW + DIB**：`AL1_S_Terminal/OverlayAnimations/Rendering/LayeredDibSection.cs`、`LayeredWindowInterop.cs`
+- **分层动画宿主**：`AL1_S_Terminal/OverlayAnimations/Runtime/LayeredOverlayAnimationHost.cs`
 - **Win32 查找/定位**：`AL1_S_Terminal.Win32/TerminalOverlayInterop.cs`
 - **CsWin32 API 清单**：`AL1_S_Terminal.Win32/NativeMethods.txt`
-- **资源图**：`AL1_S_Terminal/Assets/window_bg.png`
+- **默认动画包**：`AL1_S_Terminal/Assets/overlay_animations/Default.alice`
+- **回退资源图**：`AL1_S_Terminal/Assets/window_bg.png`
+- **动画编辑器**：`AL1_S_Terminal/OverlayAnimations/Editor/`
 
 ---
 
@@ -96,4 +131,4 @@ Windows Terminal 使用 WinUI/XAML 岛（如 `DesktopWindowXamlSource` / `Deskto
 
 - **Spy++**：`DEBUG` 托盘菜单可复制 overlay HWND，用于快速定位窗口与父/owner 关系。
 - **看锚点是否正确**：锚点窗口类名应接近 WinUI bridge（`Windows.UI.Composition.DesktopWindowContentBridge`），其 `GetWindowRect` 对应终端内容区域。
-
+- **灰块 / 无动画**：先确认是否仍走“分层路径”；再查 **`UpdateLayeredWindow` 是否使用 DIB memDC**；最后确认 **`WM_ERASEBKGND` / `OnPaintBackground`** 已被短路（见上文专节）。

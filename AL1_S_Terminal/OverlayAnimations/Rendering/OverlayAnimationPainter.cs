@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using AL1_S_Terminal.OverlayAnimations.Assets;
 using AL1_S_Terminal.OverlayAnimations.Runtime;
 
