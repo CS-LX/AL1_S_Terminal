@@ -55,10 +55,15 @@ public static class TerminalOverlayInterop {
     }
 
     /// <summary>
-    /// Moves <paramref name="overlayHwnd"/> to the bottom-left of <paramref name="anchorHwnd"/>’s screen rect.
+    /// Moves <paramref name="overlayHwnd"/> to the bottom-left or bottom-right of <paramref name="anchorHwnd"/>’s screen rect.
     /// Uses <see cref="SET_WINDOW_POS_FLAGS.SWP_NOZORDER"/> so WinForms <b>owner</b> relationship controls stacking.
     /// </summary>
-    public static bool TryPositionOverlayScreen(nint anchorHwnd, nint overlayHwnd, int overlayWidth, int overlayHeight) {
+    public static bool TryPositionOverlayScreen(
+        nint anchorHwnd,
+        nint overlayHwnd,
+        int overlayWidth,
+        int overlayHeight,
+        TerminalOverlayScreenCorner corner) {
         var anchor = new HWND(anchorHwnd);
         var overlay = new HWND(overlayHwnd);
         if (!PInvoke.IsWindow(anchor) || !PInvoke.IsWindow(overlay))
@@ -72,8 +77,10 @@ public static class TerminalOverlayInterop {
         if (overlayHeight < 1)
             overlayHeight = DefaultOverlayHeight;
 
-        var x = rect.left;
         var y = rect.bottom - overlayHeight;
+        var x = corner == TerminalOverlayScreenCorner.RightBottom
+            ? rect.right - overlayWidth
+            : rect.left;
 
         var flags = SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE
                     | SET_WINDOW_POS_FLAGS.SWP_SHOWWINDOW

@@ -112,7 +112,14 @@ public partial class MainWindow : Window {
         OverlayDebugInfo.OverlayWindowHandle = h;
 #endif
 
-        TerminalOverlayInterop.TryPositionOverlayScreen(anchorHwnd, h, _overlayForm!.ClientSize.Width, _overlayForm.ClientSize.Height);
+        var corner = TerminalOverlayDisplayPreferences.Corner;
+        TerminalOverlayInterop.TryPositionOverlayScreen(
+            anchorHwnd,
+            h,
+            _overlayForm!.ClientSize.Width,
+            _overlayForm.ClientSize.Height,
+            corner);
+        _overlayForm.SetContentMirrorHorizontal(TerminalOverlayDisplayPreferences.MirrorOverlayContent);
 
         if (IsVisible)
             Hide();

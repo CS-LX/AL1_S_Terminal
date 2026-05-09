@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Forms;
 using AL1_S_Terminal.OverlayAnimations.Editor;
+using AL1_S_Terminal.Win32;
 
 namespace AL1_S_Terminal;
 
@@ -57,6 +58,18 @@ public partial class App : System.Windows.Application {
         };
         menu.Items.Add(editorItem);
 
+        var overlayCornerMenu = new ToolStripMenuItem("Overlay 位置");
+        var cornerLeft = new ToolStripMenuItem("左下角", null, (_, _) => SetOverlayCorner(TerminalOverlayScreenCorner.LeftBottom));
+        var cornerRight = new ToolStripMenuItem("右下角", null, (_, _) => SetOverlayCorner(TerminalOverlayScreenCorner.RightBottom));
+        overlayCornerMenu.DropDownItems.Add(cornerLeft);
+        overlayCornerMenu.DropDownItems.Add(cornerRight);
+        overlayCornerMenu.DropDownOpening += (_, _) => {
+            var c = TerminalOverlayDisplayPreferences.Corner;
+            cornerLeft.Checked = c == TerminalOverlayScreenCorner.LeftBottom;
+            cornerRight.Checked = c == TerminalOverlayScreenCorner.RightBottom;
+        };
+        menu.Items.Add(overlayCornerMenu);
+
         menu.Items.Add("退出", image: null, (_, _) => Shutdown());
 
         _trayIcon = new NotifyIcon {
@@ -75,5 +88,9 @@ public partial class App : System.Windows.Application {
         }
 
         base.OnExit(e);
+    }
+
+    static void SetOverlayCorner(TerminalOverlayScreenCorner corner) {
+        TerminalOverlayDisplayPreferences.Corner = corner;
     }
 }

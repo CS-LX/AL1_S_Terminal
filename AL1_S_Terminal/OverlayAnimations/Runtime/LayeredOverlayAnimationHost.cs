@@ -23,6 +23,7 @@ public sealed class LayeredOverlayAnimationHost : IOverlayAnimator, IDisposable 
 	Bitmap? _buffer;
 	LayeredDibSection? _dib;
 	bool _disposed;
+	bool _mirrorContentHorizontally;
 
 	LayeredOverlayAnimationHost(Form form, OverlayAnimationConfig config, OverlayImageAtlas atlas) {
 		_form = form;
@@ -82,6 +83,18 @@ public sealed class LayeredOverlayAnimationHost : IOverlayAnimator, IDisposable 
 		PushFrame();
 	}
 
+	/// <summary>When true, overlay frames are drawn flipped horizontally (e.g. docked to bottom-right).</summary>
+	public bool MirrorContentHorizontally {
+		get => _mirrorContentHorizontally;
+		set {
+			ObjectDisposedException.ThrowIf(_disposed, this);
+			if (_mirrorContentHorizontally == value)
+				return;
+			_mirrorContentHorizontally = value;
+			PushFrame();
+		}
+	}
+
 	public void Dispose() {
 		if (_disposed)
 			return;
@@ -121,6 +134,11 @@ public sealed class LayeredOverlayAnimationHost : IOverlayAnimator, IDisposable 
 
 		using (var g = Graphics.FromImage(_buffer)) {
 			g.CompositingMode = CompositingMode.SourceOver;
+			if (_mirrorContentHorizontally) {
+				g.TranslateTransform(client.Width, 0f);
+				g.ScaleTransform(-1f, 1f);
+			}
+
 			OverlayAnimationPainter.Draw(g, _atlas, snapshot);
 		}
 

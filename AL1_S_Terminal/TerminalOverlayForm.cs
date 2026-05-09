@@ -23,6 +23,12 @@ sealed class TerminalOverlayForm : Form {
     /// <summary>Overlay animation controller; call <see cref="IOverlayAnimator.SetState"/> to switch states.</summary>
     public IOverlayAnimator Animator => _animator;
 
+    /// <summary>水平翻转分层 overlay 内容（右下角 dock 时使用）。非分层 fallback 不受此设置影响。</summary>
+    public void SetContentMirrorHorizontal(bool mirror) {
+        if (_layeredHost is not null)
+            _layeredHost.MirrorContentHorizontally = mirror;
+    }
+
     public TerminalOverlayForm() {
         TopLevel = true;
         ShowInTaskbar = false;
