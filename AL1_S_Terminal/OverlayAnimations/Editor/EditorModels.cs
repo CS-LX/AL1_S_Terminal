@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using AL1_S_Terminal.OverlayAnimations.Config;
 using AL1_S_Terminal.OverlayAnimations.Model;
 
 namespace AL1_S_Terminal.OverlayAnimations.Editor;
@@ -104,6 +105,12 @@ public sealed class EditorDocument {
 
     public string? FilePath { get; set; }
 
+    /// <summary>Overlay client width in pixels (persisted in key.json).</summary>
+    public int OverlayWidth { get; set; } = 200;
+
+    /// <summary>Overlay client height in pixels (persisted in key.json).</summary>
+    public int OverlayHeight { get; set; } = 200;
+
     public string DefaultState { get; set; } = string.Empty;
 
     public Dictionary<string, string> Images { get; } = new();
@@ -116,6 +123,8 @@ public sealed class EditorDocument {
     public static EditorDocument CreateMinimalForPreview() {
         var cfg = new OverlayAnimationConfig {
             Version = 1,
+            Width = 200,
+            Height = 200,
             DefaultState = "Idle"
         };
         cfg.Images["logo"] = "assets/logo.png";
@@ -132,6 +141,8 @@ public sealed class EditorDocument {
     public static EditorDocument FromConfig(OverlayAnimationConfig cfg) {
         var doc = new EditorDocument {
             Version = cfg.Version,
+            OverlayWidth = ClampOverlaySize(cfg.Width),
+            OverlayHeight = ClampOverlaySize(cfg.Height),
             DefaultState = cfg.DefaultState
         };
         foreach (var (k, v) in cfg.Images)
@@ -161,9 +172,12 @@ public sealed class EditorDocument {
     public OverlayAnimationConfig ToConfig() {
         var cfg = new OverlayAnimationConfig {
             Version = Version,
+            Width = OverlayWidth,
+            Height = OverlayHeight,
             DefaultState = DefaultState,
             Images = new Dictionary<string, string>(Images)
         };
+        OverlayAnimationConfigLoader.NormalizeOverlayDimensions(cfg);
 
         foreach (var s in States)
             cfg.States[s.Name] = new OverlayAnimationStateConfig { Clip = s.ClipName, Loop = s.Loop };
@@ -181,4 +195,7 @@ public sealed class EditorDocument {
 
         return cfg;
     }
+
+    static int ClampOverlaySize(int v) =>
+        v is >= 16 and <= 8192 ? v : 200;
 }

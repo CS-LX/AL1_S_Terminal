@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:wfi="clr-namespace:System.Windows.Forms.Integration;assembly=WindowsFormsIntegration"
         Title="Overlay 动画编辑器"
-        Width="960"
-        Height="640"
+        Width="1000"
+        Height="680"
         WindowStartupLocation="CenterScreen">
     <DockPanel>
         <ToolBar DockPanel.Dock="Top">
@@ -20,19 +20,39 @@
 
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="260" MinWidth="200" />
                 <ColumnDefinition Width="*" MinWidth="240" />
-                <ColumnDefinition Width="320" MinWidth="200" />
+                <ColumnDefinition Width="340" MinWidth="200" />
             </Grid.ColumnDefinitions>
 
-            <TreeView x:Name="StructureTree"
-                      Grid.Column="0"
-                      Margin="8"
-                      SelectedItemChanged="StructureTree_OnSelectedItemChanged" />
+            <Grid Grid.Column="0" Margin="8,8,4,8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                    <TextBlock Text="叠加层尺寸（像素）" FontWeight="SemiBold" />
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <TextBox x:Name="OverlayWidthBox" Width="72" VerticalContentAlignment="Center" TextChanged="OverlaySizeBox_TextChanged" />
+                        <TextBlock Text="×" Margin="6,0" VerticalAlignment="Center" />
+                        <TextBox x:Name="OverlayHeightBox" Width="72" VerticalContentAlignment="Center" TextChanged="OverlaySizeBox_TextChanged" />
+                    </StackPanel>
+                    <TextBlock Text="默认状态" Margin="0,10,0,0" FontWeight="SemiBold" />
+                    <ComboBox x:Name="DefaultStateCombo" Margin="0,4,0,0" SelectionChanged="DefaultStateCombo_OnSelectionChanged" />
+
+                    <TextBlock Text="结构（右键菜单编辑）" Margin="0,12,0,4" FontWeight="SemiBold" />
+                </StackPanel>
+
+                <TreeView x:Name="StructureTree"
+                          Grid.Row="1"
+                          ContextMenuOpening="StructureTree_OnContextMenuOpening"
+                          SelectedItemChanged="StructureTree_OnSelectedItemChanged" />
+            </Grid>
 
             <DataGrid x:Name="KeyframesGrid"
                       Grid.Column="1"
-                      Margin="8"
+                      Margin="4,8,4,8"
                       AutoGenerateColumns="False"
                       CanUserAddRows="True"
                       CanUserDeleteRows="True"
@@ -48,8 +68,8 @@
                 </DataGrid.Columns>
             </DataGrid>
 
-            <Border Grid.Column="2" Margin="8" BorderBrush="#CCC" BorderThickness="1" Padding="4">
-                <wfi:WindowsFormsHost x:Name="PreviewHost" />
+            <Border Grid.Column="2" Margin="4,8,8,8" BorderBrush="#CCC" BorderThickness="1" Padding="4">
+                <wfi:WindowsFormsHost x:Name="PreviewHost" HorizontalAlignment="Left" VerticalAlignment="Top" />
             </Border>
         </Grid>
     </DockPanel>

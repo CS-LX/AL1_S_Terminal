@@ -74,7 +74,7 @@ public partial class MainWindow : Window {
         OverlayDebugInfo.OverlayWindowHandle = h;
 #endif
 
-        TerminalOverlayInterop.TryPositionOverlayScreen(anchorHwnd, h);
+        TerminalOverlayInterop.TryPositionOverlayScreen(anchorHwnd, h, _overlayForm!.ClientSize.Width, _overlayForm.ClientSize.Height);
 
         if (IsVisible)
             Hide();

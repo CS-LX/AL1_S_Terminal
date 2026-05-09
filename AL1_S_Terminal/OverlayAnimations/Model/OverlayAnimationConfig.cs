@@ -4,6 +4,12 @@ public sealed class OverlayAnimationConfig
 {
 	public int Version { get; set; }
 
+	/// <summary>Overlay client width in pixels (default 200 when missing or invalid in JSON).</summary>
+	public int Width { get; set; } = 200;
+
+	/// <summary>Overlay client height in pixels (default 200 when missing or invalid in JSON).</summary>
+	public int Height { get; set; } = 200;
+
 	public string DefaultState { get; set; } = string.Empty;
 
 	public Dictionary<string, string> Images { get; set; } = new();

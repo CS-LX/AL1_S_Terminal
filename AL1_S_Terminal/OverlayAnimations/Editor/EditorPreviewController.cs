@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Drawing;
 using System.Windows.Forms;
 using System.Windows.Forms.Integration;
 using System.Windows.Threading;
@@ -46,8 +47,15 @@ public sealed class EditorPreviewController : IDisposable {
 
         ReleaseWorkspaceFileLocks();
 
+        var cw = Math.Clamp(cfg.Width, 16, 8192);
+        var ch = Math.Clamp(cfg.Height, 16, 8192);
+
         _atlas = new OverlayImageAtlas(cfg.Images, baseDir);
-        _control = new OverlayAnimationControl(_atlas) { Dock = DockStyle.Fill };
+        _control = new OverlayAnimationControl(_atlas) {
+            Dock = DockStyle.None,
+            Size = new Size(cw, ch),
+            Location = new Point(0, 0)
+        };
         _host.Child = _control;
         _animator = new OverlayAnimator(cfg);
 

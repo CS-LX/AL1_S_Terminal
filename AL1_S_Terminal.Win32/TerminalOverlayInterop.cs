@@ -7,8 +7,9 @@ using Windows.Win32.UI.WindowsAndMessaging;
 namespace AL1_S_Terminal.Win32;
 
 public static class TerminalOverlayInterop {
-    public const int OverlayWidth = 200;
-    public const int OverlayHeight = 200;
+    /// <summary>Default overlay size when config does not specify dimensions.</summary>
+    public const int DefaultOverlayWidth = 200;
+    public const int DefaultOverlayHeight = 200;
 
     const string CascadiaHostingWindowClass = "CASCADIA_HOSTING_WINDOW_CLASS";
     const string DesktopWindowContentBridgeClass = "Windows.UI.Composition.DesktopWindowContentBridge";
@@ -57,7 +58,7 @@ public static class TerminalOverlayInterop {
     /// Moves <paramref name="overlayHwnd"/> to the bottom-left of <paramref name="anchorHwnd"/>’s screen rect.
     /// Uses <see cref="SET_WINDOW_POS_FLAGS.SWP_NOZORDER"/> so WinForms <b>owner</b> relationship controls stacking.
     /// </summary>
-    public static bool TryPositionOverlayScreen(nint anchorHwnd, nint overlayHwnd) {
+    public static bool TryPositionOverlayScreen(nint anchorHwnd, nint overlayHwnd, int overlayWidth, int overlayHeight) {
         var anchor = new HWND(anchorHwnd);
         var overlay = new HWND(overlayHwnd);
         if (!PInvoke.IsWindow(anchor) || !PInvoke.IsWindow(overlay))
@@ -66,14 +67,19 @@ public static class TerminalOverlayInterop {
         if (!PInvoke.GetWindowRect(anchor, out var rect))
             return false;
 
+        if (overlayWidth < 1)
+            overlayWidth = DefaultOverlayWidth;
+        if (overlayHeight < 1)
+            overlayHeight = DefaultOverlayHeight;
+
         var x = rect.left;
-        var y = rect.bottom - OverlayHeight;
+        var y = rect.bottom - overlayHeight;
 
         var flags = SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE
                     | SET_WINDOW_POS_FLAGS.SWP_SHOWWINDOW
                     | SET_WINDOW_POS_FLAGS.SWP_NOZORDER;
 
-        _ = PInvoke.SetWindowPos(overlay, HWND.Null, x, y, OverlayWidth, OverlayHeight, flags);
+        _ = PInvoke.SetWindowPos(overlay, HWND.Null, x, y, overlayWidth, overlayHeight, flags);
         return true;
     }
 

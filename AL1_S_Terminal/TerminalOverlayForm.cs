@@ -13,9 +13,11 @@ namespace AL1_S_Terminal;
 /// </summary>
 sealed class TerminalOverlayForm : Form {
     const int WsExNoactivate = unchecked((int)0x0800_0000);
+    const int WsExLayered = unchecked((int)0x0008_0000);
 
-    readonly OverlayAnimationHost? _host;
-    readonly OverlayAliceExtractSession? _aliceSession;
+    bool _useLayeredOverlay;
+    OverlayAliceExtractSession? _aliceSession;
+    LayeredOverlayAnimationHost? _layeredHost;
     readonly IOverlayAnimator _animator;
 
     /// <summary>Overlay animation controller; call <see cref="IOverlayAnimator.SetState"/> to switch states.</summary>
@@ -28,42 +30,58 @@ sealed class TerminalOverlayForm : Form {
         StartPosition = FormStartPosition.Manual;
         AutoScaleMode = AutoScaleMode.None;
 
-        var s = new Size(TerminalOverlayInterop.OverlayWidth, TerminalOverlayInterop.OverlayHeight);
-        ClientSize = s;
-        MinimumSize = s;
-        MaximumSize = s;
-
-        using var packStream = global::System.Windows.Application.GetResourceStream(
-                new Uri("pack://application:,,,/Assets/window_bg.png"))
-            ?.Stream;
-
-        if (packStream is not null) {
-            using var ms = new MemoryStream();
-            packStream.CopyTo(ms);
-            ms.Position = 0;
-            BackgroundImage = new Bitmap(ms);
-        }
-
-        BackgroundImageLayout = ImageLayout.Stretch;
-        DoubleBuffered = true;
+        _useLayeredOverlay = false;
 
         var alicePath = Path.Combine(AppContext.BaseDirectory, "Assets", "overlay_animations", "Default.alice");
 
         try {
             _aliceSession = OverlayAlicePackage.LoadExtracted(alicePath);
-            _host = OverlayAnimationHost.CreateAndAttach(this, _aliceSession.Config, _aliceSession.BaseDirectory);
-            _animator = _host;
+            var cfg = _aliceSession.Config;
+            OverlayAnimationConfigLoader.NormalizeOverlayDimensions(cfg);
+
+            _useLayeredOverlay = true;
+
+            var w = cfg.Width;
+            var h = cfg.Height;
+            var s = new Size(w, h);
+            ClientSize = s;
+            MinimumSize = s;
+            MaximumSize = s;
+
+            _layeredHost = LayeredOverlayAnimationHost.Attach(this, cfg, _aliceSession.BaseDirectory);
+            _layeredHost.PlayDefault();
+            _animator = _layeredHost;
         }
         catch (Exception ex) {
             Debug.WriteLine($"[TerminalOverlayForm] Failed to load default overlay animation package: {alicePath}");
             Debug.WriteLine(ex);
+            _useLayeredOverlay = false;
             _animator = new NullOverlayAnimator();
+
+            var fallback = new Size(200, 200);
+            ClientSize = fallback;
+            MinimumSize = fallback;
+            MaximumSize = fallback;
+
+            using var packStream = global::System.Windows.Application.GetResourceStream(
+                    new Uri("pack://application:,,,/Assets/window_bg.png"))
+                ?.Stream;
+
+            if (packStream is not null) {
+                using var ms = new MemoryStream();
+                packStream.CopyTo(ms);
+                ms.Position = 0;
+                BackgroundImage = new Bitmap(ms);
+            }
+
+            BackgroundImageLayout = ImageLayout.Stretch;
+            DoubleBuffered = true;
         }
     }
 
     protected override void Dispose(bool disposing) {
         if (disposing) {
-            _host?.Dispose();
+            _layeredHost?.Dispose();
             _aliceSession?.Dispose();
         }
         base.Dispose(disposing);
@@ -73,6 +91,8 @@ sealed class TerminalOverlayForm : Form {
         get {
             var cp = base.CreateParams;
             cp.ExStyle |= WsExNoactivate;
+            if (_useLayeredOverlay)
+                cp.ExStyle |= WsExLayered;
             return cp;
         }
     }

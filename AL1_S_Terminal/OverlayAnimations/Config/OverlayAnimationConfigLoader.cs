@@ -23,7 +23,17 @@ public static class OverlayAnimationConfigLoader
 		var cfg = JsonSerializer.Deserialize<OverlayAnimationConfig>(json, Options);
 		if (cfg is null)
 			throw new JsonException("Deserialized config is null.");
+		NormalizeOverlayDimensions(cfg);
 		return cfg;
+	}
+
+	/// <summary>System.Text.Json leaves missing numeric members as 0; enforce sane overlay size.</summary>
+	public static void NormalizeOverlayDimensions(OverlayAnimationConfig cfg)
+	{
+		if (cfg.Width < 16 || cfg.Width > 8192)
+			cfg.Width = 200;
+		if (cfg.Height < 16 || cfg.Height > 8192)
+			cfg.Height = 200;
 	}
 
 	public static string ToJson(OverlayAnimationConfig cfg) =>
