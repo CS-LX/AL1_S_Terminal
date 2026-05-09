@@ -90,4 +90,4 @@ dotnet build .\AL1_S_Terminal.sln -c Release
 
 ## 许可证
 
-若仓库根目录未单独提供许可证文件，以仓库内实际声明为准。
+本项目以 [MIT 许可证](LICENSE) 发布。
