@@ -1,72 +1,78 @@
 using System.Windows;
-using System.Windows.Interop;
+using System.Windows.Forms;
 using System.Windows.Threading;
 using AL1_S_Terminal.Win32;
 
 namespace AL1_S_Terminal;
 
 public partial class MainWindow : Window {
-    readonly DispatcherTimer _attachTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
+    /// <summary>~60 Hz position follow.</summary>
+    readonly DispatcherTimer _attachTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
 
-    bool _embedded;
-    nint _embedCapturedStyle;
-    nint _attachedTerminalHwnd;
+    TerminalOverlayForm? _overlayForm;
+    nint _overlayOwnerHostingHwnd;
 
     public MainWindow() {
         InitializeComponent();
 
-        _attachTimer.Tick += (_, _) => SyncTerminalAttachment();
+        _attachTimer.Tick += (_, _) => SyncTerminalOverlay();
 
         SourceInitialized += (_, _) => _attachTimer.Start();
-        Closing += (_, _) => DetachEmbeddedIfNeeded();
+        Closing += (_, _) => DisposeOverlayForm();
         Closed += (_, _) => _attachTimer.Stop();
     }
 
-    void DetachEmbeddedIfNeeded() {
-        if (!_embedded)
+    void DisposeOverlayForm() {
+        if (_overlayForm is null)
             return;
 
-        var overlayHwnd = (nint)new WindowInteropHelper(this).Handle;
-        if (overlayHwnd != 0)
-            TerminalOverlayInterop.EndEmbedOverlay(overlayHwnd, _embedCapturedStyle);
-
-        _embedded = false;
+        _overlayForm.Dispose();
+        _overlayForm = null;
+        _overlayOwnerHostingHwnd = 0;
+        OverlayDebugInfo.OverlayWindowHandle = 0;
     }
 
-    void SyncTerminalAttachment() {
-        var helper = new WindowInteropHelper(this);
-        var overlayHwnd = (nint)helper.Handle;
-        if (overlayHwnd == 0)
-            return;
-
-        if (!TerminalOverlayInterop.TryFindWindowsTerminalWindow(out var termHwnd)) {
-            if (_embedded) {
-                TerminalOverlayInterop.EndEmbedOverlay(overlayHwnd, _embedCapturedStyle);
-                _embedded = false;
-            }
-
+    void SyncTerminalOverlay() {
+        if (!TerminalOverlayInterop.TryFindWindowsTerminalWindow(out var hostingHwnd)) {
+            DisposeOverlayForm();
             Hide();
             return;
         }
 
-        if (!_embedded) {
-            if (!TerminalOverlayInterop.TryBeginEmbedInTerminalClient(termHwnd, overlayHwnd, out var captured))
+        TerminalOverlayInterop.ResolveTerminalAnchorHwnd(hostingHwnd, out var anchorHwnd);
+
+        var needNewOverlay = _overlayForm is null
+                             || _overlayForm.IsDisposed
+                             || _overlayOwnerHostingHwnd != hostingHwnd;
+
+        if (needNewOverlay) {
+            DisposeOverlayForm();
+
+            try {
+                _overlayForm = new TerminalOverlayForm();
+                // Owned window stays above its owner in Z-order (fixes WinUI painting over a plain top-level overlay).
+                _overlayForm.Show(new TerminalHwndOwner((nint)hostingHwnd));
+                _overlayOwnerHostingHwnd = hostingHwnd;
+            }
+            catch {
+                DisposeOverlayForm();
                 return;
-
-            _embedCapturedStyle = captured;
-            _embedded = true;
-            _attachedTerminalHwnd = termHwnd;
-        }
-        else if (_attachedTerminalHwnd != termHwnd) {
-            if (!TerminalOverlayInterop.TrySwitchEmbedParent(overlayHwnd, termHwnd))
-                return;
-
-            _attachedTerminalHwnd = termHwnd;
+            }
         }
 
-        TerminalOverlayInterop.TryLayoutEmbeddedInTerminalClient(termHwnd, overlayHwnd);
+        var h = (nint)_overlayForm!.Handle;
+        OverlayDebugInfo.OverlayWindowHandle = h;
 
-        if (!IsVisible)
-            Show();
+        TerminalOverlayInterop.TryPositionOverlayScreen(anchorHwnd, h);
+        TerminalOverlayInterop.TryForceOverlayPixelSize(h);
+
+        if (IsVisible)
+            Hide();
+    }
+
+    sealed class TerminalHwndOwner : IWin32Window {
+        public IntPtr Handle { get; }
+
+        public TerminalHwndOwner(nint hwnd) => Handle = (IntPtr)hwnd;
     }
 }

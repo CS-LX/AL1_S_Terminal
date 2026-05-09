@@ -1,8 +1,9 @@
 EnumWindows
+EnumChildWindows
+GetClassName
 GetWindowThreadProcessId
 IsWindowVisible
 GetWindowRect
-GetClientRect
-SetParent
+GetParent
 SetWindowPos
 IsWindow
