@@ -1,3 +1,5 @@
+using System.Drawing;
+using AL1_S_Terminal.OverlayAnimations.Assets;
 using AL1_S_Terminal.OverlayAnimations.Config;
 using AL1_S_Terminal.OverlayAnimations.Model;
 using AL1_S_Terminal.OverlayAnimations.Runtime;
@@ -297,5 +299,36 @@ public sealed class OverlayAnimatorTests
 		Assert.Single(snapshot.Items);
 		Assert.Equal(25, snapshot.Items[0].X);
 		Assert.Equal(0.25, snapshot.Items[0].Opacity, precision: 10);
+	}
+}
+
+public sealed class OverlayImageAtlasTests
+{
+	[Fact]
+	public void AtlasCachesImagesByKey()
+	{
+		var images = new Dictionary<string, string> { ["a"] = "x.png" };
+		using var atlas = new OverlayImageAtlas(images, @"C:\no\such\base", _ => new Bitmap(1, 1));
+
+		Assert.False(atlas.TryGet("missing", out _));
+		Assert.True(atlas.TryGet("a", out var image));
+		Assert.NotNull(image);
+	}
+
+	[Fact]
+	public void AtlasLoadsOncePerKey()
+	{
+		var images = new Dictionary<string, string> { ["k"] = "f.png" };
+		var loadCount = 0;
+		using var atlas = new OverlayImageAtlas(images, @"C:\base", _ =>
+		{
+			loadCount++;
+			return new Bitmap(1, 1);
+		});
+
+		Assert.True(atlas.TryGet("k", out var img1));
+		Assert.True(atlas.TryGet("k", out var img2));
+		Assert.Same(img1, img2);
+		Assert.Equal(1, loadCount);
 	}
 }
