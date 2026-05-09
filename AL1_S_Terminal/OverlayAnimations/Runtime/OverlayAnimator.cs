@@ -13,12 +13,23 @@ public sealed class OverlayAnimator
 
 	public void PlayDefault() => SetState(_config.DefaultState);
 
-	public void SetState(string stateName)
+	public void SetState(string stateName, bool restart = true)
 	{
+		_ = restart;
 		if (!_config.States.ContainsKey(stateName))
 			throw new ArgumentException($"Unknown state: {stateName}", nameof(stateName));
 
 		CurrentState = stateName;
+	}
+
+	public bool TrySetState(string stateName, bool restart = true)
+	{
+		_ = restart;
+		if (!_config.States.ContainsKey(stateName))
+			return false;
+
+		CurrentState = stateName;
+		return true;
 	}
 
 	public OverlayRenderSnapshot Sample(int ms)

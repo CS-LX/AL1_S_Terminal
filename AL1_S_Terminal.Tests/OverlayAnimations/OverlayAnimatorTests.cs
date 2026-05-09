@@ -82,6 +82,54 @@ internal static class TestConfigs
 		};
 	}
 
+	public static OverlayAnimationConfig TwoStatesDifferentX()
+	{
+		return new OverlayAnimationConfig
+		{
+			Version = 1,
+			DefaultState = "Idle",
+			Images = new Dictionary<string, string> { ["img"] = "x.png" },
+			States = new Dictionary<string, OverlayAnimationStateConfig>
+			{
+				["Idle"] = new OverlayAnimationStateConfig { Clip = "idle", Loop = false },
+				["Pulse"] = new OverlayAnimationStateConfig { Clip = "pulse", Loop = false }
+			},
+			Clips = new Dictionary<string, OverlayAnimationClipConfig>
+			{
+				["idle"] = new OverlayAnimationClipConfig
+				{
+					DurationMs = 1000,
+					Layers = new Dictionary<string, OverlayAnimationLayerConfig>
+					{
+						["L"] = new OverlayAnimationLayerConfig
+						{
+							ImageKey = "img",
+							Frames = new List<OverlayAnimationKeyframe>
+							{
+								new() { T = 0, X = 0, Y = 0, Opacity = 1, Scale = 1 }
+							}
+						}
+					}
+				},
+				["pulse"] = new OverlayAnimationClipConfig
+				{
+					DurationMs = 1000,
+					Layers = new Dictionary<string, OverlayAnimationLayerConfig>
+					{
+						["L"] = new OverlayAnimationLayerConfig
+						{
+							ImageKey = "img",
+							Frames = new List<OverlayAnimationKeyframe>
+							{
+								new() { T = 0, X = 100, Y = 0, Opacity = 1, Scale = 1 }
+							}
+						}
+					}
+				}
+			}
+		};
+	}
+
 	public static OverlayAnimationConfig LoopingClipDuration(int durationMs)
 	{
 		return new OverlayAnimationConfig
@@ -117,6 +165,18 @@ internal static class TestConfigs
 
 public sealed class OverlayAnimatorTests
 {
+	[Fact]
+	public void CanSwitchStateExternally()
+	{
+		var cfg = TestConfigs.TwoStatesDifferentX();
+		var animator = new OverlayAnimator(cfg);
+		animator.PlayDefault();
+		Assert.Equal(0, animator.Sample(0).Items[0].X);
+
+		animator.SetState("Pulse");
+		Assert.Equal(100, animator.Sample(0).Items[0].X);
+	}
+
 	[Fact]
 	public void LoadsDefaultStateAndSamples()
 	{
