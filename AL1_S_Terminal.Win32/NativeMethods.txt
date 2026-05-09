@@ -7,3 +7,5 @@ GetWindowRect
 GetParent
 SetWindowPos
 IsWindow
+GetForegroundWindow
+IsChild

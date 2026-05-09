@@ -129,6 +129,7 @@ public sealed class EditorDocument {
         };
         cfg.Images["logo"] = "assets/logo.png";
         cfg.States["Idle"] = new OverlayAnimationStateConfig { Clip = "idle", Loop = true };
+        cfg.States["Typing"] = new OverlayAnimationStateConfig { Clip = "idle", Loop = true };
         var clip = new OverlayAnimationClipConfig { DurationMs = 1000 };
         clip.Layers["L"] = new OverlayAnimationLayerConfig {
             ImageKey = "logo",

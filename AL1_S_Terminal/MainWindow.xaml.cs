@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Forms;
 using System.Windows.Threading;
+using AL1_S_Terminal.TerminalInput;
 using AL1_S_Terminal.Win32;
 
 namespace AL1_S_Terminal;
@@ -10,15 +11,50 @@ public partial class MainWindow : Window {
 
     TerminalOverlayForm? _overlayForm;
     nint _overlayOwnerHostingHwnd;
+    TerminalKeyboardActivityHook? _keyboardActivityHook;
+    TerminalOverlayAnimationAutoCoordinator? _overlayAnimationAutoCoordinator;
+    const int TypingActivityTtlMs = 450;
 
     public MainWindow() {
         InitializeComponent();
 
         _attachTimer.Tick += (_, _) => SyncTerminalOverlay();
 
-        SourceInitialized += (_, _) => _attachTimer.Start();
+        SourceInitialized += (_, _) => {
+            EnsureTerminalInputAutomation();
+            _attachTimer.Start();
+        };
         Closing += (_, _) => DisposeOverlayForm();
-        Closed += (_, _) => _attachTimer.Stop();
+        Closed += (_, _) => {
+            _attachTimer.Stop();
+            DisposeTerminalInputAutomation();
+        };
+    }
+
+    void EnsureTerminalInputAutomation() {
+        if (_overlayAnimationAutoCoordinator is not null)
+            return;
+
+        try {
+            _keyboardActivityHook = new TerminalKeyboardActivityHook(() =>
+                _overlayOwnerHostingHwnd != 0
+                && TerminalForegroundInterop.IsForegroundInTerminalSubtree(_overlayOwnerHostingHwnd));
+        }
+        catch {
+            _keyboardActivityHook = null;
+        }
+
+        _overlayAnimationAutoCoordinator = new TerminalOverlayAnimationAutoCoordinator(
+            () => _overlayOwnerHostingHwnd != 0
+                  && TerminalForegroundInterop.IsForegroundInTerminalSubtree(_overlayOwnerHostingHwnd),
+            () => _keyboardActivityHook?.IsRecentlyTyping(TypingActivityTtlMs) == true,
+            TrySetOverlayAnimationState);
+    }
+
+    void DisposeTerminalInputAutomation() {
+        _overlayAnimationAutoCoordinator = null;
+        _keyboardActivityHook?.Dispose();
+        _keyboardActivityHook = null;
     }
 
     /// <summary>若 overlay 已创建且未释放，切换动画状态；否则安全返回 false。</summary>
@@ -36,6 +72,7 @@ public partial class MainWindow : Window {
         _overlayForm.Dispose();
         _overlayForm = null;
         _overlayOwnerHostingHwnd = 0;
+        _overlayAnimationAutoCoordinator?.Reset();
 #if DEBUG
         OverlayDebugInfo.OverlayWindowHandle = 0;
 #endif
@@ -62,6 +99,7 @@ public partial class MainWindow : Window {
                 // Owned window stays above its owner in Z-order (fixes WinUI painting over a plain top-level overlay).
                 _overlayForm.Show(new TerminalHwndOwner((nint)hostingHwnd));
                 _overlayOwnerHostingHwnd = hostingHwnd;
+                _overlayAnimationAutoCoordinator?.Reset();
             }
             catch {
                 DisposeOverlayForm();
@@ -78,6 +116,8 @@ public partial class MainWindow : Window {
 
         if (IsVisible)
             Hide();
+
+        _overlayAnimationAutoCoordinator?.Tick();
     }
 
     sealed class TerminalHwndOwner : IWin32Window {
