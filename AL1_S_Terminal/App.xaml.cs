@@ -26,6 +26,18 @@ public partial class App : System.Windows.Application {
         mainWindow.Hide();
 
         var menu = new ContextMenuStrip();
+
+        var animIdleItem = new ToolStripMenuItem("动画：Idle");
+        animIdleItem.Click += (_, _) =>
+            System.Windows.Application.Current.Dispatcher.Invoke(() => mainWindow.TrySetOverlayAnimationState("Idle"));
+
+        var animPulseItem = new ToolStripMenuItem("动画：Pulse");
+        animPulseItem.Click += (_, _) =>
+            System.Windows.Application.Current.Dispatcher.Invoke(() => mainWindow.TrySetOverlayAnimationState("Pulse"));
+
+        menu.Items.Add(animIdleItem);
+        menu.Items.Add(animPulseItem);
+
 #if DEBUG
         var copyOverlayHandleItem = new ToolStripMenuItem("复制 overlay 句柄");
         copyOverlayHandleItem.Click += (_, _) => {

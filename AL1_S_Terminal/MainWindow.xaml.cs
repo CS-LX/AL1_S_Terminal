@@ -21,6 +21,14 @@ public partial class MainWindow : Window {
         Closed += (_, _) => _attachTimer.Stop();
     }
 
+    /// <summary>若 overlay 已创建且未释放，切换动画状态；否则安全返回 false。</summary>
+    internal bool TrySetOverlayAnimationState(string state) {
+        if (_overlayForm is null || _overlayForm.IsDisposed)
+            return false;
+
+        return _overlayForm.Animator.TrySetState(state, restart: true);
+    }
+
     void DisposeOverlayForm() {
         if (_overlayForm is null)
             return;
