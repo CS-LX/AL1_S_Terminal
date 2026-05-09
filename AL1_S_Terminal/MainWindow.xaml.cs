@@ -6,7 +6,6 @@ using AL1_S_Terminal.Win32;
 namespace AL1_S_Terminal;
 
 public partial class MainWindow : Window {
-    /// <summary>~60 Hz position follow.</summary>
     readonly DispatcherTimer _attachTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
 
     TerminalOverlayForm? _overlayForm;
@@ -29,7 +28,9 @@ public partial class MainWindow : Window {
         _overlayForm.Dispose();
         _overlayForm = null;
         _overlayOwnerHostingHwnd = 0;
+#if DEBUG
         OverlayDebugInfo.OverlayWindowHandle = 0;
+#endif
     }
 
     void SyncTerminalOverlay() {
@@ -61,10 +62,11 @@ public partial class MainWindow : Window {
         }
 
         var h = (nint)_overlayForm!.Handle;
+#if DEBUG
         OverlayDebugInfo.OverlayWindowHandle = h;
+#endif
 
         TerminalOverlayInterop.TryPositionOverlayScreen(anchorHwnd, h);
-        TerminalOverlayInterop.TryForceOverlayPixelSize(h);
 
         if (IsVisible)
             Hide();

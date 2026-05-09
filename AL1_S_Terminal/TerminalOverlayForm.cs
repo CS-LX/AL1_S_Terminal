@@ -18,9 +18,10 @@ sealed class TerminalOverlayForm : Form {
         StartPosition = FormStartPosition.Manual;
         AutoScaleMode = AutoScaleMode.None;
 
-        ClientSize = new Size(TerminalOverlayInterop.OverlayWidth, TerminalOverlayInterop.OverlayHeight);
-        MinimumSize = ClientSize;
-        MaximumSize = ClientSize;
+        var s = new Size(TerminalOverlayInterop.OverlayWidth, TerminalOverlayInterop.OverlayHeight);
+        ClientSize = s;
+        MinimumSize = s;
+        MaximumSize = s;
 
         using var packStream = global::System.Windows.Application.GetResourceStream(
                 new Uri("pack://application:,,,/Assets/window_bg.png"))

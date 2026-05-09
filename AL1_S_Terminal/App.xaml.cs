@@ -1,15 +1,20 @@
-using System.Drawing;
 using System.Windows;
 using System.Windows.Forms;
 
 namespace AL1_S_Terminal;
+
+#if DEBUG
+internal static class OverlayDebugInfo {
+    public static nint OverlayWindowHandle { get; set; }
+}
+#endif
 
 public partial class App : System.Windows.Application {
     NotifyIcon? _trayIcon;
 
     static App() {
         // WinForms overlay must use physical pixels; otherwise ClientSize shrinks on high DPI (e.g. 200→172).
-        System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
+        System.Windows.Forms.Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
     }
 
     protected override void OnStartup(StartupEventArgs e) {
@@ -37,7 +42,7 @@ public partial class App : System.Windows.Application {
         menu.Items.Add("退出", image: null, (_, _) => Shutdown());
 
         _trayIcon = new NotifyIcon {
-            Icon = SystemIcons.Application,
+            Icon = System.Drawing.SystemIcons.Application,
             Visible = true,
             Text = "AL1_S_Terminal",
             ContextMenuStrip = menu,

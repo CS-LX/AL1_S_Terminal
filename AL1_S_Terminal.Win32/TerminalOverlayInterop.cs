@@ -1,28 +1,23 @@
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace AL1_S_Terminal.Win32;
 
-/// <summary>
-/// Locates Windows Terminal and positions a <b>top-level</b> overlay HWND above it (no <c>SetParent</c> — WinUI does not cooperate with foreign child HWNDs).
-/// </summary>
 public static class TerminalOverlayInterop {
     public const int OverlayWidth = 200;
     public const int OverlayHeight = 200;
 
-    public const string CascadiaHostingWindowClass = "CASCADIA_HOSTING_WINDOW_CLASS";
+    const string CascadiaHostingWindowClass = "CASCADIA_HOSTING_WINDOW_CLASS";
+    const string DesktopWindowContentBridgeClass = "Windows.UI.Composition.DesktopWindowContentBridge";
 
-    public const string DesktopWindowContentBridgeClass = "Windows.UI.Composition.DesktopWindowContentBridge";
-
-    static readonly List<nint> ChildHwndsScratch = new();
+    static readonly List<nint> ChildScratch = new();
+    static readonly List<nint> BridgesBuffer = new();
 
     static nint _bestHwndLoose;
     static int _bestAreaLoose;
-
     static nint _bestHwndStrict;
     static int _bestAreaStrict;
 
@@ -82,33 +77,45 @@ public static class TerminalOverlayInterop {
         return true;
     }
 
-    /// <summary>Forces outer size to <see cref="OverlayWidth"/>×<see cref="OverlayHeight"/> (screen pixels).</summary>
-    public static void TryForceOverlayPixelSize(nint overlayHwnd) {
-        var wnd = new HWND(overlayHwnd);
-        if (!PInvoke.IsWindow(wnd))
-            return;
-
-        var flags = SET_WINDOW_POS_FLAGS.SWP_NOMOVE
-                    | SET_WINDOW_POS_FLAGS.SWP_NOZORDER
-                    | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE;
-
-        _ = PInvoke.SetWindowPos(wnd, HWND.Null, 0, 0, OverlayWidth, OverlayHeight, flags);
-    }
-
     static bool TryFindInnermostDesktopWindowContentBridge(nint rootHostingHwnd, out nint bridgeHwnd) {
         bridgeHwnd = 0;
-        if (!CollectDesktopWindowContentBridges(rootHostingHwnd, out var bridges) || bridges.Count == 0)
+        if (!CollectDesktopWindowContentBridges(rootHostingHwnd))
             return false;
 
-        var inner = bridges
-            .Where(b => !bridges.Any(c => c != b && IsStrictAncestor(b, c)))
-            .ToList();
-
-        if (inner.Count == 0)
-            inner = bridges;
-
+        // prefer innermost bridge(s): not ancestor of any other bridge
         var bestArea = -1;
-        foreach (var h in inner) {
+        for (var i = 0; i < BridgesBuffer.Count; i++) {
+            var b = BridgesBuffer[i];
+            var inner = true;
+            for (var j = 0; j < BridgesBuffer.Count; j++) {
+                var c = BridgesBuffer[j];
+                if (c == b)
+                    continue;
+                if (!IsStrictAncestor(b, c))
+                    continue;
+                inner = false;
+                break;
+            }
+
+            if (!inner)
+                continue;
+
+            var ch = new HWND(b);
+            if (!PInvoke.GetWindowRect(ch, out var rect))
+                continue;
+            var area = (rect.right - rect.left) * (rect.bottom - rect.top);
+            if (area > bestArea) {
+                bestArea = area;
+                bridgeHwnd = b;
+            }
+        }
+
+        if (bridgeHwnd != 0)
+            return true;
+
+        // fallback: largest bridge
+        for (var i = 0; i < BridgesBuffer.Count; i++) {
+            var h = BridgesBuffer[i];
             var ch = new HWND(h);
             if (!PInvoke.GetWindowRect(ch, out var rect))
                 continue;
@@ -122,15 +129,17 @@ public static class TerminalOverlayInterop {
         return bridgeHwnd != 0;
     }
 
-    static bool CollectDesktopWindowContentBridges(nint rootHostingHwnd, out List<nint> bridges) {
-        bridges = new List<nint>();
+    static bool CollectDesktopWindowContentBridges(nint rootHostingHwnd) {
+        BridgesBuffer.Clear();
         var queue = new Queue<nint>();
         queue.Enqueue(rootHostingHwnd);
 
         while (queue.Count > 0) {
             var cur = queue.Dequeue();
 
-            foreach (var child in EnumerateImmediateChildren(cur)) {
+            EnumImmediateChildren(cur);
+            for (var i = 0; i < ChildScratch.Count; i++) {
+                var child = ChildScratch[i];
                 queue.Enqueue(child);
 
                 var ch = new HWND(child);
@@ -148,11 +157,11 @@ public static class TerminalOverlayInterop {
                 if (w < 80 || h < 80)
                     continue;
 
-                bridges.Add(child);
+                BridgesBuffer.Add(child);
             }
         }
 
-        return bridges.Count > 0;
+        return BridgesBuffer.Count > 0;
     }
 
     static unsafe bool IsStrictAncestor(nint ancestor, nint descendant) {
@@ -166,14 +175,13 @@ public static class TerminalOverlayInterop {
         return false;
     }
 
-    static List<nint> EnumerateImmediateChildren(nint parentHwnd) {
-        ChildHwndsScratch.Clear();
+    static void EnumImmediateChildren(nint parentHwnd) {
+        ChildScratch.Clear();
         _ = PInvoke.EnumChildWindows(new HWND(parentHwnd), AccumChildrenProc, new LPARAM(0));
-        return new List<nint>(ChildHwndsScratch);
     }
 
     static unsafe BOOL AccumChildrenImpl(HWND hwnd, LPARAM lParamUnused) {
-        ChildHwndsScratch.Add((nint)hwnd.Value);
+        ChildScratch.Add((nint)hwnd.Value);
         return true;
     }
 
