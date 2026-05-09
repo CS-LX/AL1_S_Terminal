@@ -47,6 +47,39 @@ internal static class TestConfigs
 		return cfg;
 	}
 
+	public static OverlayAnimationConfig IdleLogoClipForJsonRoundTrip()
+	{
+		return new OverlayAnimationConfig
+		{
+			Version = 1,
+			DefaultState = "Idle",
+			Images = new Dictionary<string, string> { ["logo"] = "logo.png" },
+			States = new Dictionary<string, OverlayAnimationStateConfig>
+			{
+				["Idle"] = new OverlayAnimationStateConfig { Clip = "idle", Loop = true }
+			},
+			Clips = new Dictionary<string, OverlayAnimationClipConfig>
+			{
+				["idle"] = new OverlayAnimationClipConfig
+				{
+					DurationMs = 1000,
+					Layers = new Dictionary<string, OverlayAnimationLayerConfig>
+					{
+						["logoLayer"] = new OverlayAnimationLayerConfig
+						{
+							ImageKey = "logo",
+							Frames = new List<OverlayAnimationKeyframe>
+							{
+								new() { T = 0, X = 0, Y = 0, Opacity = 0, Scale = 1 },
+								new() { T = 1000, X = 10, Y = 0, Opacity = 1, Scale = 1 }
+							}
+						}
+					}
+				}
+			}
+		};
+	}
+
 	public static OverlayAnimationConfig LoopingClipDuration(int durationMs)
 	{
 		return new OverlayAnimationConfig
@@ -128,14 +161,40 @@ public sealed class OverlayAnimatorTests
 	[Fact]
 	public void JsonRoundTripPreservesCoreFields()
 	{
-		var cfg = TestConfigs.OneLayerTwoFrames();
+		var cfg = TestConfigs.IdleLogoClipForJsonRoundTrip();
 		var json = OverlayAnimationConfigLoader.ToJson(cfg);
 		var back = OverlayAnimationConfigLoader.FromJson(json);
+
+		Assert.Equal("Idle", back.DefaultState);
+		Assert.True(back.Images.TryGetValue("logo", out var logoPath));
+		Assert.False(string.IsNullOrEmpty(logoPath));
+		Assert.True(back.States.TryGetValue("Idle", out var idleState));
+		Assert.True(idleState.Loop);
+		Assert.True(back.Clips.TryGetValue("idle", out var idleClip));
+		Assert.Equal(1000, idleClip.DurationMs);
+		Assert.NotNull(idleClip.Layers);
+		Assert.True(idleClip.Layers.Count >= 1);
+		Assert.Contains(idleClip.Layers, p => p.Value.ImageKey == "logo");
 
 		var animator = new OverlayAnimator(back);
 		animator.PlayDefault();
 		var s = animator.Sample(ms: 500);
 		Assert.Equal(5, s.Items[0].X);
+	}
+
+	[Fact]
+	public void LoadBundledDefaultJson_FromTestOutput_HasExpectedStructure()
+	{
+		var path = Path.Combine(AppContext.BaseDirectory, "Assets", "overlay_animations", "default.json");
+		Assert.True(File.Exists(path), $"Expected default overlay config at: {path}");
+		var cfg = OverlayAnimationConfigLoader.LoadFromFile(path);
+		Assert.Equal("Idle", cfg.DefaultState);
+		foreach (var key in new[] { "spark", "ring", "logo" })
+			Assert.True(cfg.Images.ContainsKey(key), $"Missing image key: {key}");
+		foreach (var state in new[] { "Idle", "Pulse" })
+			Assert.True(cfg.States.ContainsKey(state), $"Missing state: {state}");
+		foreach (var clip in new[] { "idle", "pulse" })
+			Assert.True(cfg.Clips.ContainsKey(clip), $"Missing clip: {clip}");
 	}
 
 	[Fact]
