@@ -1,6 +1,7 @@
 <Window x:Class="AL1_S_Terminal.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Icon="pack://application:,,,/Assets/app.ico"
         Title="AL1_S_Terminal"
         Width="200"
         Height="200"

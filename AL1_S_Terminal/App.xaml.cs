@@ -1,3 +1,5 @@
+using System.IO;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Forms;
 using AL1_S_Terminal.OverlayAnimations.Editor;
@@ -73,7 +75,7 @@ public partial class App : System.Windows.Application {
         menu.Items.Add("退出", image: null, (_, _) => Shutdown());
 
         _trayIcon = new NotifyIcon {
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = LoadTrayIcon(),
             Visible = true,
             Text = "AL1_S_Terminal",
             ContextMenuStrip = menu,
@@ -92,5 +94,24 @@ public partial class App : System.Windows.Application {
 
     static void SetOverlayCorner(TerminalOverlayScreenCorner corner) {
         TerminalOverlayDisplayPreferences.Corner = corner;
+    }
+
+    /// <summary>与 exe 嵌入的 <c>ApplicationIcon</c>（Assets\app.ico）一致。</summary>
+    static Icon LoadTrayIcon() {
+        try {
+            var exePath = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(exePath))
+                exePath = Assembly.GetExecutingAssembly().Location;
+            if (!string.IsNullOrEmpty(exePath) && File.Exists(exePath)) {
+                var fromExe = Icon.ExtractAssociatedIcon(exePath);
+                if (fromExe is not null)
+                    return fromExe;
+            }
+        }
+        catch {
+            // fall through
+        }
+
+        return SystemIcons.Application;
     }
 }

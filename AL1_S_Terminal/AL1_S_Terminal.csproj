@@ -18,10 +18,14 @@
 
 		<BuildProjectReferences>true</BuildProjectReferences>
 
+		<!-- 与托盘图标同源：由 ffmpeg 自 PNG 生成 Assets\app.ico -->
+		<ApplicationIcon>Assets\app.ico</ApplicationIcon>
+
 	</PropertyGroup>
 
 	<ItemGroup>
 		<Resource Include="Assets\window_bg.png" />
+		<Resource Include="Assets\app.ico" />
 	</ItemGroup>
 
 	<ItemGroup>
