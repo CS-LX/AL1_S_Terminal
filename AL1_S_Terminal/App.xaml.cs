@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Forms;
+using AL1_S_Terminal.OverlayAnimations.Editor;
 
 namespace AL1_S_Terminal;
 
@@ -11,6 +12,7 @@ internal static class OverlayDebugInfo {
 
 public partial class App : System.Windows.Application {
     NotifyIcon? _trayIcon;
+    OverlayAnimationEditorWindow? _editorWindow;
 
     static App() {
         // WinForms overlay must use physical pixels; otherwise ClientSize shrinks on high DPI (e.g. 200→172).
@@ -39,6 +41,21 @@ public partial class App : System.Windows.Application {
         };
         menu.Items.Add(copyOverlayHandleItem);
 #endif
+        var editorItem = new ToolStripMenuItem("动画编辑器…");
+        editorItem.Click += (_, _) => {
+            Current.Dispatcher.Invoke(() => {
+                if (_editorWindow is not null) {
+                    _editorWindow.Activate();
+                    return;
+                }
+
+                _editorWindow = new OverlayAnimationEditorWindow();
+                _editorWindow.Closed += (_, _) => _editorWindow = null;
+                _editorWindow.Show();
+            });
+        };
+        menu.Items.Add(editorItem);
+
         menu.Items.Add("退出", image: null, (_, _) => Shutdown());
 
         _trayIcon = new NotifyIcon {
